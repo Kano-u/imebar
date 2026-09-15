@@ -20,10 +20,10 @@ public final class BarModule extends XposedModule {
     private final ConfigSource source = new ConfigSource() {
         public BarConfig get() {
             try {
-                return new BarConfig(BarModule.this.getRemotePreferences(BarConfig.GROUP));
+                return BarConfig.fromPrefs(BarModule.this.getRemotePreferences(BarConfig.GROUP));
             } catch (Throwable t) {
                 Log.w(TAG, "读取远程配置失败，先用默认值", t);
-                return new BarConfig(null);
+                return BarConfig.defaults();
             }
         }
     };

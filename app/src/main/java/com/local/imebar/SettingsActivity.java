@@ -142,7 +142,7 @@ public final class SettingsActivity extends Activity {
     // ---------- 读取 / 保存 ----------
 
     private void load() {
-        BarConfig cfg = new BarConfig(prefs);
+        BarConfig cfg = BarConfig.fromPrefs(prefs);
         enabledBox.setChecked(cfg.enabled());
         edgeSlider.set(cfg.edgeDistanceDp());
         sideSlider.set(cfg.sideMarginDp());
@@ -191,9 +191,12 @@ public final class SettingsActivity extends Activity {
                 .putString(BarConfig.KEY_BUTTONS, buttonsBox.getText().toString())
                 .apply();
 
-        // 立刻通知输入法进程重读配置：这样不用切输入法就能看到效果
+        // 把配置的数值本身推给输入法进程：不用切输入法，立刻生效
         try {
-            sendBroadcast(new Intent(BarConfig.ACTION_CONFIG_CHANGED));
+            BarConfig cfg = BarConfig.fromPrefs(prefs);
+            Intent intent = new Intent(BarConfig.ACTION_CONFIG_CHANGED);
+            intent.putExtras(cfg.toBundle());
+            sendBroadcast(intent);
         } catch (Throwable ignored) {
         }
         Toast.makeText(this, "已保存并即时生效", Toast.LENGTH_SHORT).show();

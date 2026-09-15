@@ -46,6 +46,8 @@ final class ImeBar {
     private static View lastBar;
     private static String lastSignature;
     private static boolean receiverRegistered;
+    /** 设置页刚刚通过广播推过来的配置（进程内优先用它，一定是最新的） */
+    private static volatile BarConfig pushed;
 
     private ImeBar() {
     }
@@ -75,8 +77,12 @@ final class ImeBar {
     }
 
     private static BarConfig readConfig() {
+        BarConfig pushedConfig = pushed;
+        if (pushedConfig != null) {
+            return pushedConfig;
+        }
         ConfigSource current = source;
-        return current != null ? current.get() : new BarConfig(null);
+        return current != null ? current.get() : BarConfig.defaults();
     }
 
     private static void attach(InputMethodService service, BarConfig cfg) {
@@ -141,7 +147,12 @@ final class ImeBar {
         }
     }
 
-    /** 让设置页的改动能立刻生效：只有持有本模块签名级权限的 App 才发得进来 */
+    /**
+     * 让设置页的改动能立刻生效。
+     *
+     * 关键点：广播里带的是**配置的数值本身**，收到就直接用，不再去读远程偏好
+     * （远程偏好是快照，LSPosed 侧还可能缓存对象，重读拿不到新值）。
+     */
     private static void registerConfigReceiver(Context context) {
         if (receiverRegistered) {
             return;
@@ -150,17 +161,22 @@ final class ImeBar {
         try {
             BroadcastReceiver receiver = new BroadcastReceiver() {
                 public void onReceive(Context ctx, Intent intent) {
-                    Log.i(TAG, "收到配置变更，立刻重读并重建工具栏");
+                    if (intent == null || !BarConfig.ACTION_CONFIG_CHANGED.equals(intent.getAction())) {
+                        return;
+                    }
+                    BarConfig cfg = BarConfig.fromBundle(intent.getExtras());
+                    pushed = cfg;
+                    Log.i(TAG, "收到设置推送：底部距离=" + cfg.edgeDistanceDp() + "dp"
+                            + ", 左右边距=" + cfg.sideMarginDp() + "dp"
+                            + ", 字号=" + cfg.textSizeSp() + "dp"
+                            + ", 透明度=" + cfg.opacityPercent() + "%"
+                            + ", 位置=" + (cfg.isBottom() ? "底部" : "顶部"));
                     refresh();
                 }
             };
             IntentFilter filter = new IntentFilter(BarConfig.ACTION_CONFIG_CHANGED);
-            if (Build.VERSION.SDK_INT >= 33) {
-                context.registerReceiver(receiver, filter, BarConfig.PERMISSION_CONFIG, null,
-                        Context.RECEIVER_EXPORTED);
-            } else {
-                context.registerReceiver(receiver, filter, BarConfig.PERMISSION_CONFIG, null);
-            }
+            int flags = Build.VERSION.SDK_INT >= 33 ? Context.RECEIVER_EXPORTED : 0;
+            context.registerReceiver(receiver, filter, null, null, flags);
             Log.i(TAG, "已注册配置变更接收器");
         } catch (Throwable t) {
             Log.w(TAG, "注册配置变更接收器失败（改动仍会在下次弹出键盘时生效）", t);

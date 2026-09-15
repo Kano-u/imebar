@@ -1,0 +1,18 @@
+# 推荐作用域：列在这里的输入法会在 LSPosed 里被推荐（豆包输入法放第一位）
+com.bytedance.android.doubaoime
+com.tencent.wetype
+com.iflytek.inputmethod
+com.sohu.inputmethod.sogou
+com.baidu.input
+com.google.android.inputmethod.latin
+com.qianwen.ime
+com.cootek.smartinputv5
+com.xiaomi.type
+com.samsung.android.honeyboard
+com.touchtype.swiftkey
+com.microsoft.swiftkey
+com.miui.inputmethod
+com.baidu.input_mi
+com.sohu.inputmethod.sogou.xiaomi
+com.vivo.ime
+com.oppo.inputmethod

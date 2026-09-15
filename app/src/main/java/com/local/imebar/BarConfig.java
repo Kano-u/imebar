@@ -2,28 +2,29 @@ package com.local.imebar;
 
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.os.Bundle;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 模块配置。数据存在"模块 App"自己的 SharedPreferences("config") 里，
- * 输入法进程通过 libxposed 的 getRemotePreferences("config") 读到同一份内容。
+ * 模块配置：一个不可变的值对象。
  *
- * 坐标参照的是"输入法窗口"本身，不是屏幕：
- *   位置     = 键盘底部（默认）/ 键盘顶部
- *   底部距离 = 工具栏距键盘那一条边缘的高度
- *   左右边距 = 工具栏两侧与窗口边缘的距离
+ * 它有两种来源，都要产出同样的字段：
+ *   1) fromPrefs()  —— 模块 App 自己的 SharedPreferences("config")；
+ *   2) fromBundle() —— 设置页保存后通过广播直接推送给输入法进程的数值。
+ *
+ * 为什么要有 (2)：输入法进程里读到的"远程偏好"（libxposed getRemotePreferences）
+ * 是内存快照，LSPosed 侧还可能缓存这个对象，改了设置重读也拿不到新值。
+ * 所以改设置时干脆把数值本身放进广播送过去，输入法收到就直接用，不再依赖读取。
  */
 public final class BarConfig {
 
     public static final String GROUP = "config";
     public static final String MODULE_PKG = "com.local.imebar";
 
-    /** 设置页保存后发的广播：让输入法进程立刻重读配置并重建工具栏 */
+    /** 设置页保存后发的广播：里面带着配置的数值 */
     public static final String ACTION_CONFIG_CHANGED = "com.local.imebar.action.CONFIG_CHANGED";
-    /** 只有本 App（同名同签名）才能触发上面那个广播 */
-    public static final String PERMISSION_CONFIG = "com.local.imebar.permission.CONFIG";
 
     // 显示
     public static final String KEY_ENABLED = "bar_enabled";
@@ -66,86 +67,180 @@ public final class BarConfig {
                     + "收起键盘|hide\n"
                     + "更多|menu|切输入法=switch_ime;插入日期=insert_date;插入时间=insert_time;打开设置=settings";
 
-    private final SharedPreferences prefs;
+    private final boolean enabled;
+    private final boolean bottom;
+    private final int edgeDistance;
+    private final int sideMargin;
+    private final int textSize;
+    private final int opacity;
+    private final boolean pill;
+    private final boolean stretch;
+    private final String textColorHex;
+    private final String pillColorHex;
+    private final String barBackgroundHex;
+    private final String buttonsRaw;
+    private final List<Button> buttons;
 
-    public BarConfig(SharedPreferences prefs) {
-        this.prefs = prefs;
+    private BarConfig(boolean enabled, boolean bottom, int edgeDistance, int sideMargin, int textSize,
+                      int opacity, boolean pill, boolean stretch, String textColorHex,
+                      String pillColorHex, String barBackgroundHex, String buttonsRaw) {
+        this.enabled = enabled;
+        this.bottom = bottom;
+        this.edgeDistance = clamp(edgeDistance, 0, 60);
+        this.sideMargin = clamp(sideMargin, 0, 60);
+        this.textSize = clamp(textSize, 10, 24);
+        this.opacity = clamp(opacity, 20, 100);
+        this.pill = pill;
+        this.stretch = stretch;
+        this.textColorHex = safe(textColorHex, DEF_TEXT_COLOR);
+        this.pillColorHex = safe(pillColorHex, DEF_PILL_BG);
+        this.barBackgroundHex = safe(barBackgroundHex, DEF_BAR_BG);
+        this.buttonsRaw = (buttonsRaw == null || buttonsRaw.trim().length() == 0)
+                ? DEFAULT_BUTTONS : buttonsRaw;
+        this.buttons = parseButtons(this.buttonsRaw);
     }
 
-    // ---------- 显示 ----------
+    // ---------- 两个来源 ----------
+
+    public static BarConfig fromPrefs(SharedPreferences prefs) {
+        if (prefs == null) {
+            return defaults();
+        }
+        return new BarConfig(
+                getBoolean(prefs, KEY_ENABLED, true),
+                !POSITION_TOP.equals(getString(prefs, KEY_POSITION, POSITION_BOTTOM)),
+                getInt(prefs, KEY_EDGE_DISTANCE, DEF_EDGE_DISTANCE),
+                getInt(prefs, KEY_SIDE_MARGIN, DEF_SIDE_MARGIN),
+                getInt(prefs, KEY_TEXT_SIZE, DEF_TEXT_SIZE),
+                getInt(prefs, KEY_OPACITY, DEF_OPACITY),
+                STYLE_PILL.equals(getString(prefs, KEY_STYLE, STYLE_TEXT)),
+                !LAYOUT_LEFT.equals(getString(prefs, KEY_LAYOUT, LAYOUT_STRETCH)),
+                getString(prefs, KEY_TEXT_COLOR, DEF_TEXT_COLOR),
+                getString(prefs, KEY_PILL_BG, DEF_PILL_BG),
+                getString(prefs, KEY_BAR_BG, DEF_BAR_BG),
+                getString(prefs, KEY_BUTTONS, DEFAULT_BUTTONS));
+    }
+
+    public static BarConfig fromBundle(Bundle bundle) {
+        if (bundle == null) {
+            return defaults();
+        }
+        return new BarConfig(
+                bundle.getBoolean(KEY_ENABLED, true),
+                !POSITION_TOP.equals(bundle.getString(KEY_POSITION, POSITION_BOTTOM)),
+                bundle.getInt(KEY_EDGE_DISTANCE, DEF_EDGE_DISTANCE),
+                bundle.getInt(KEY_SIDE_MARGIN, DEF_SIDE_MARGIN),
+                bundle.getInt(KEY_TEXT_SIZE, DEF_TEXT_SIZE),
+                bundle.getInt(KEY_OPACITY, DEF_OPACITY),
+                STYLE_PILL.equals(bundle.getString(KEY_STYLE, STYLE_TEXT)),
+                !LAYOUT_LEFT.equals(bundle.getString(KEY_LAYOUT, LAYOUT_STRETCH)),
+                bundle.getString(KEY_TEXT_COLOR, DEF_TEXT_COLOR),
+                bundle.getString(KEY_PILL_BG, DEF_PILL_BG),
+                bundle.getString(KEY_BAR_BG, DEF_BAR_BG),
+                bundle.getString(KEY_BUTTONS, DEFAULT_BUTTONS));
+    }
+
+    public Bundle toBundle() {
+        Bundle bundle = new Bundle();
+        bundle.putBoolean(KEY_ENABLED, enabled);
+        bundle.putString(KEY_POSITION, bottom ? POSITION_BOTTOM : POSITION_TOP);
+        bundle.putInt(KEY_EDGE_DISTANCE, edgeDistance);
+        bundle.putInt(KEY_SIDE_MARGIN, sideMargin);
+        bundle.putInt(KEY_TEXT_SIZE, textSize);
+        bundle.putInt(KEY_OPACITY, opacity);
+        bundle.putString(KEY_STYLE, pill ? STYLE_PILL : STYLE_TEXT);
+        bundle.putString(KEY_LAYOUT, stretch ? LAYOUT_STRETCH : LAYOUT_LEFT);
+        bundle.putString(KEY_TEXT_COLOR, textColorHex);
+        bundle.putString(KEY_PILL_BG, pillColorHex);
+        bundle.putString(KEY_BAR_BG, barBackgroundHex);
+        bundle.putString(KEY_BUTTONS, buttonsRaw);
+        return bundle;
+    }
+
+    public static BarConfig defaults() {
+        return new BarConfig(true, true, DEF_EDGE_DISTANCE, DEF_SIDE_MARGIN, DEF_TEXT_SIZE,
+                DEF_OPACITY, false, true, DEF_TEXT_COLOR, DEF_PILL_BG, DEF_BAR_BG, DEFAULT_BUTTONS);
+    }
+
+    // ---------- 取值 ----------
 
     public boolean enabled() {
-        return getBoolean(KEY_ENABLED, true);
+        return enabled;
     }
 
     public boolean isBottom() {
-        return !POSITION_TOP.equals(getString(KEY_POSITION, POSITION_BOTTOM));
+        return bottom;
     }
 
     /** 工具栏距键盘那一条边缘的高度（位置=底部时是底边，位置=顶部时是顶边） */
     public int edgeDistanceDp() {
-        return clamp(getInt(KEY_EDGE_DISTANCE, DEF_EDGE_DISTANCE), 0, 60);
+        return edgeDistance;
     }
 
     public int sideMarginDp() {
-        return clamp(getInt(KEY_SIDE_MARGIN, DEF_SIDE_MARGIN), 0, 60);
+        return sideMargin;
     }
 
     public int textSizeSp() {
-        return clamp(getInt(KEY_TEXT_SIZE, DEF_TEXT_SIZE), 10, 24);
+        return textSize;
     }
 
     public int opacityPercent() {
-        return clamp(getInt(KEY_OPACITY, DEF_OPACITY), 20, 100);
+        return opacity;
     }
 
-    // ---------- 样式 ----------
-
     public boolean isPill() {
-        return STYLE_PILL.equals(getString(KEY_STYLE, STYLE_TEXT));
+        return pill;
     }
 
     public boolean isStretch() {
-        return !LAYOUT_LEFT.equals(getString(KEY_LAYOUT, LAYOUT_STRETCH));
+        return stretch;
     }
 
     public String textColorHex() {
-        return getString(KEY_TEXT_COLOR, DEF_TEXT_COLOR);
+        return textColorHex;
     }
 
     public String pillColorHex() {
-        return getString(KEY_PILL_BG, DEF_PILL_BG);
+        return pillColorHex;
     }
 
     public String barBackgroundHex() {
-        return getString(KEY_BAR_BG, DEF_BAR_BG);
+        return barBackgroundHex;
     }
 
     public int textColor() {
-        return parseColor(textColorHex(), 0xFF202124);
+        return parseColor(textColorHex, 0xFF202124);
     }
 
     public int pillColor() {
-        return parseColor(pillColorHex(), 0xFFF2F3F5);
+        return parseColor(pillColorHex, 0xFFF2F3F5);
     }
 
     public int barBackgroundColor() {
-        return parseColor(barBackgroundHex(), Color.TRANSPARENT);
+        return parseColor(barBackgroundHex, Color.TRANSPARENT);
     }
 
-    // ---------- 按钮 ----------
-
     public String buttonsRaw() {
-        String value = getString(KEY_BUTTONS, null);
-        if (value != null && value.trim().length() > 0) {
-            return value;
-        }
-        return DEFAULT_BUTTONS;
+        return buttonsRaw;
     }
 
     public List<Button> buttons() {
+        return buttons;
+    }
+
+    /** 用来判断配置有没有变，变了就重建工具栏 */
+    public String signature() {
+        return enabled + "|" + bottom + "|" + edgeDistance + "|" + sideMargin + "|" + textSize
+                + "|" + opacity + "|" + pill + "|" + stretch + "|" + textColorHex + "|"
+                + pillColorHex + "|" + barBackgroundHex + "|" + buttonsRaw;
+    }
+
+    // ---------- 解析 ----------
+
+    private static List<Button> parseButtons(String raw) {
         List<Button> list = new ArrayList<>();
-        for (String line : buttonsRaw().split("\n")) {
+        for (String line : raw.split("\n")) {
             if (line == null) {
                 continue;
             }
@@ -200,37 +295,26 @@ public final class BarConfig {
         return items;
     }
 
-    /** 用来判断配置有没有变，变了就重建工具栏 */
-    public String signature() {
-        return enabled() + "|" + isBottom() + "|" + edgeDistanceDp() + "|" + sideMarginDp()
-                + "|" + textSizeSp() + "|" + opacityPercent()
-                + "|" + isPill() + "|" + isStretch() + "|" + textColorHex() + "|" + pillColorHex()
-                + "|" + barBackgroundHex() + "|" + buttonsRaw();
-    }
+    // ---------- 小工具 ----------
 
-    // ---------- 读写小工具（远程偏好偶尔会抛异常，统一兜住） ----------
-
-    private boolean getBoolean(String key, boolean def) {
+    private static boolean getBoolean(SharedPreferences prefs, String key, boolean def) {
         try {
-            return prefs == null || prefs.getBoolean(key, def);
+            return prefs.getBoolean(key, def);
         } catch (Throwable ignored) {
             return def;
         }
     }
 
-    private int getInt(String key, int def) {
+    private static int getInt(SharedPreferences prefs, String key, int def) {
         try {
-            return prefs == null ? def : prefs.getInt(key, def);
+            return prefs.getInt(key, def);
         } catch (Throwable ignored) {
             return def;
         }
     }
 
-    private String getString(String key, String def) {
+    private static String getString(SharedPreferences prefs, String key, String def) {
         try {
-            if (prefs == null) {
-                return def;
-            }
             String value = prefs.getString(key, def);
             return value == null ? def : value;
         } catch (Throwable ignored) {
@@ -246,6 +330,10 @@ public final class BarConfig {
         } catch (Throwable ignored) {
         }
         return fallback;
+    }
+
+    private static String safe(String value, String def) {
+        return value == null ? def : value;
     }
 
     private static int clamp(int value, int min, int max) {

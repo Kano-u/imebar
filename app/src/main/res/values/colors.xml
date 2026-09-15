@@ -1,20 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  简约卡片风 + 蓝色点缀：页面浅灰底、卡片纯白（带阴影）、正文黑字；
-  蓝色只出现在——对勾（复选框）、可拖动数值条（SeekBar）、按钮，以及卡片标题。
-  颜色只写在这里，别在代码里散落色值。
+  Material Design 3 色板（零依赖手写，固定蓝色系，基于 #0B57D0）。
+  代码里只引用这里的语义名，不要散落字面色值。
 -->
 <resources>
-    <color name="page_bg">#FFF2F2F7</color>
-    <color name="card_bg">#FFFFFFFF</color>
-    <!-- 主色：对勾 / 数值条 / 按钮 -->
-    <color name="accent">#FF2196F3</color>
-    <!-- 卡片标题用的蓝：比主色再深一点 -->
-    <color name="accent_deep">#FF1565C0</color>
-    <color name="accent_soft">#FFE3F2FD</color>
-    <color name="accent_ripple">#332196F3</color>
-    <color name="text_main">#FF1A1A1A</color>
-    <color name="text_hint">#FF8A8A8E</color>
-    <!-- 日志/执行结果框的中性浅灰底 -->
-    <color name="box_bg">#FFF5F5F6</color>
+    <!-- Primary：主按钮、Switch 打开、滑条 -->
+    <color name="md_primary">#FF0B57D0</color>
+    <color name="md_on_primary">#FFFFFFFF</color>
+    <!-- 次按钮（tonal 容器） -->
+    <color name="md_primary_container">#FFD3E3FD</color>
+    <color name="md_on_primary_container">#FF041E49</color>
+
+    <!-- Surface -->
+    <color name="md_surface">#FFF9F9FF</color>
+    <color name="md_surface_bright">#FFFFFFFF</color>
+    <color name="md_surface_container">#FFEDEDF4</color>
+    <color name="md_surface_container_high">#FFE7E8EE</color>
+    <color name="md_on_surface">#FF191C20</color>
+    <color name="md_on_surface_variant">#FF44474F</color>
+
+    <!-- 描边 -->
+    <color name="md_outline">#FF74777F</color>
+    <color name="md_outline_variant">#FFC4C6D0</color>
+
+    <!-- 状态层：主色 12% -->
+    <color name="md_ripple_primary">#1F0B57D0</color>
 </resources>

@@ -16,17 +16,21 @@ import android.widget.TextView;
 import java.util.List;
 
 /**
- * 弹出菜单：一张居中的浅色圆角卡片，条目之间有细分隔线。
+ * 弹出菜单：一张居中的白色圆角卡片（MD3 Large 圆角 16dp + Level2 阴影），条目之间有细分隔线。
  *
  * 没有用 PopupWindow，而是直接把一层覆盖 View 加到输入法窗口的 DecorView 上。
  * 原因：输入法窗口的高度只到键盘底部，PopupWindow 很容易被窗口边界裁掉；
  * 直接在窗口内部画反而更稳，也能做出"卡片浮在键盘上"的效果。
+ *
+ * 注意：这里跑在输入法进程，拿到的是输入法的 Resources，用不了模块自己的 R.color，
+ * 所以颜色只能写死（和 res/values/colors.xml 里的 MD3 token 对应）。
  */
 final class BarMenu {
 
     private static final String TAG = "ImeBar";
     private static final int SCRIM_COLOR = 0x14000000;   // 很轻的一层压暗
-    private static final int DIVIDER_COLOR = 0x1F000000;
+    private static final int DIVIDER_COLOR = 0xFFC4C6D0; // outline variant
+    private static final int TEXT_COLOR = 0xFF191C20;    // on surface：菜单文字固定深色
 
     private static View overlay;
 
@@ -50,13 +54,13 @@ final class BarMenu {
 
     /** 同一个按钮再点一次就收起来 */
     static void toggle(ViewGroup decor, Context context, InputMethodService service,
-                       BarConfig.Button button, BarConfig config) {
+                       BarConfig.Button button) {
         if (isShowing()) {
             dismiss();
             return;
         }
         try {
-            show(decor, context, service, button, config);
+            show(decor, context, service, button);
         } catch (Throwable t) {
             Log.e(TAG, "弹出菜单失败", t);
             dismiss();
@@ -64,7 +68,7 @@ final class BarMenu {
     }
 
     private static void show(ViewGroup decor, Context context, final InputMethodService service,
-                             BarConfig.Button button, BarConfig config) {
+                             BarConfig.Button button) {
         List<BarConfig.Item> items = button.menuItems;
         if (items == null || items.isEmpty()) {
             return;
@@ -84,10 +88,11 @@ final class BarMenu {
         card.setClickable(true); // 吃掉点击，避免点到卡片时把菜单关掉
 
         GradientDrawable cardBackground = new GradientDrawable();
-        // 菜单卡片用干净的白色（和设置页的卡片一致），配深色文字
+        // 菜单卡片：干净的白底 + 深色文字（MD3 菜单规格），圆角 16dp
         cardBackground.setColor(0xFFFFFFFF);
-        cardBackground.setCornerRadius(dp(context, 26));
+        cardBackground.setCornerRadius(dp(context, 16));
         card.setBackground(cardBackground);
+        card.setElevation(dp(context, 3));   // Level2：从键盘上浮起来
         card.setMinimumWidth(dp(context, 196));
         int cardPadding = dp(context, 6);
         card.setPadding(0, cardPadding, 0, cardPadding);
@@ -101,12 +106,13 @@ final class BarMenu {
 
             TextView row = new TextView(context);
             row.setText(item.label);
-            row.setTextSize(17f);
-            row.setTextColor(config.textColor());
+            row.setTextSize(16f);
+            row.setTextColor(TEXT_COLOR);
             row.setGravity(Gravity.CENTER);
             row.setSingleLine(true);
-            int hPad = dp(context, 28);
-            int vPad = dp(context, 18);
+            // 条目最小高度按 MD3 菜单来（16sp 文字 + 上下 14dp ≈ 48dp）
+            int hPad = dp(context, 20);
+            int vPad = dp(context, 14);
             row.setPadding(hPad, vPad, hPad, vPad);
             row.setBackground(ripple());
             row.setOnClickListener(new View.OnClickListener() {
@@ -153,7 +159,7 @@ final class BarMenu {
     }
 
     private static RippleDrawable ripple() {
-        return new RippleDrawable(ColorStateList.valueOf(0x1A000000), null, null);
+        return new RippleDrawable(ColorStateList.valueOf(0x1F0B57D0), null, null);
     }
 
     private static int dp(Context context, int value) {

@@ -5,12 +5,12 @@
       colorAccent / colorControlActivated 决定复选框的对勾和 SeekBar 的进度色——就是那两处浅绿。
     -->
     <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
-        <item name="android:windowBackground">@color/page_bg</item>
-        <item name="android:colorAccent">@color/accent</item>
-        <item name="android:colorControlActivated">@color/accent</item>
-        <item name="android:colorControlHighlight">@color/accent_ripple</item>
-        <item name="android:statusBarColor">@color/page_bg</item>
-        <item name="android:navigationBarColor">@color/page_bg</item>
+        <item name="android:windowBackground">@color/md_surface</item>
+        <item name="android:colorAccent">@color/md_primary</item>
+        <item name="android:colorControlActivated">@color/md_primary</item>
+        <item name="android:colorControlHighlight">@color/md_ripple_primary</item>
+        <item name="android:statusBarColor">@color/md_surface</item>
+        <item name="android:navigationBarColor">@color/md_surface</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
     </style>

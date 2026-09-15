@@ -3,8 +3,10 @@ package com.local.imebar;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
@@ -12,26 +14,29 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * 设置页：改完点「保存」才生效（手动保存，不做自动保存）。
+ * 设置页：Material Design 3 风格，零依赖（只用系统控件 + 代码自绘）。
  *
- * 页面是简约卡片风：浅灰底 + 白色圆角卡片（带一点阴影），一节一张卡，左右和卡片之间都留间隙；
- * 卡片标题用比主色再深一点的蓝，蓝色（对勾 / 数值条 / 按钮）只做点缀。
- * 颜色统一在 res/values/colors.xml 里，不在代码里散落色值。
+ * 逻辑：改完点「保存」才写偏好 + 广播下发（手动保存）；「恢复默认」= 填好默认值并立即保存。
+ * 视觉：卡片 12dp 圆角 + 1dp 阴影、胶囊按钮带涟漪、Switch 代替复选框、滑条染色、
+ * 输入框是 MD3 outlined 样式（常态 1dp 描边、聚焦 2dp 主色）。颜色全在 res/values/colors.xml。
  */
 public final class SettingsActivity extends Activity {
 
+    /** MD3 里的中等字重 */
+    private final Typeface medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+
     private SharedPreferences prefs;
 
-    private CheckBox enabledBox;
+    private Switch enabledSwitch;
     private Slider edgeSlider;
     private Slider sideSlider;
     private Slider textSizeSlider;
@@ -49,23 +54,29 @@ public final class SettingsActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        int side = dp(16);   // 两侧留白
-        root.setPadding(side, dp(12), side, dp(20));
+        root.setPadding(dp(16), dp(16), dp(16), dp(24));
 
+        // Title Large
         TextView title = new TextView(this);
         title.setText(R.string.app_name);
-        title.setTextSize(20f);
-        title.setTextColor(color(R.color.text_main));
-        title.setPadding(dp(4), dp(4), 0, dp(12));
+        title.setTextSize(22f);
+        title.setTypeface(medium);
+        title.setTextColor(color(R.color.md_on_surface));
+        title.setPadding(dp(4), dp(8), 0, dp(16));
         root.addView(title);
 
         // ---------- 显示设置 ----------
         LinearLayout display = card(root, "显示设置");
-        enabledBox = new CheckBox(this);
-        enabledBox.setText("启用工具栏");
-        enabledBox.setTextSize(16f);
-        enabledBox.setTextColor(color(R.color.text_main));
-        display.addView(enabledBox);
+
+        enabledSwitch = new Switch(this);
+        enabledSwitch.setText("启用工具栏");
+        enabledSwitch.setTextSize(16f);
+        enabledSwitch.setTextColor(color(R.color.md_on_surface));
+        enabledSwitch.setTrackTintList(states(
+                color(R.color.md_primary), color(R.color.md_surface_container_high)));
+        enabledSwitch.setThumbTintList(states(
+                color(R.color.md_surface_bright), color(R.color.md_outline_variant)));
+        display.addView(enabledSwitch);
 
         edgeSlider = addSlider(display, "底部距离", "工具栏距键盘底部的高度",
                 0, 60, BarConfig.DEF_EDGE_DISTANCE, " dp");
@@ -85,12 +96,7 @@ public final class SettingsActivity extends Activity {
         LinearLayout buttons = card(root, "按钮");
         buttons.addView(hint("一行一个：显示文字|动作|参数。以 # 开头的行是注释，会被忽略。"));
 
-        buttonsBox = new EditText(this);
-        buttonsBox.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        buttonsBox.setMinLines(6);
-        buttonsBox.setTextSize(14f);
-        buttonsBox.setTextColor(color(R.color.text_main));
-        buttonsBox.setGravity(Gravity.TOP | Gravity.START);
+        buttonsBox = outlinedEdit(true);
         buttons.addView(buttonsBox, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -106,9 +112,9 @@ public final class SettingsActivity extends Activity {
         logView = new TextView(this);
         logView.setTextSize(11f);
         logView.setTypeface(Typeface.MONOSPACE);
-        logView.setTextColor(color(R.color.text_main));
-        logView.setBackground(roundRect(color(R.color.box_bg), dp(10)));
-        logView.setPadding(dp(10), dp(10), dp(10), dp(10));
+        logView.setTextColor(color(R.color.md_on_surface));
+        logView.setBackground(roundRect(color(R.color.md_surface_container), dp(12)));
+        logView.setPadding(dp(12), dp(12), dp(12), dp(12));
         logView.setText(RunLog.dump());
         ScrollView logScroll = new ScrollView(this);
         logScroll.addView(logView);
@@ -140,7 +146,7 @@ public final class SettingsActivity extends Activity {
         }));
 
         final ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(color(R.color.page_bg));
+        scroll.setBackgroundColor(color(R.color.md_surface));
         scroll.addView(root);
         // Android 15（targetSdk 35）默认边到边：不加这段，最上面的字会被状态栏盖住
         scroll.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
@@ -177,7 +183,7 @@ public final class SettingsActivity extends Activity {
     private void save(String reason) {
         try {
             prefs.edit()
-                    .putBoolean(BarConfig.KEY_ENABLED, enabledBox.isChecked())
+                    .putBoolean(BarConfig.KEY_ENABLED, enabledSwitch.isChecked())
                     .putInt(BarConfig.KEY_EDGE_DISTANCE, edgeSlider.value())
                     .putInt(BarConfig.KEY_SIDE_MARGIN, sideSlider.value())
                     .putInt(BarConfig.KEY_TEXT_SIZE, textSizeSlider.value())
@@ -218,7 +224,7 @@ public final class SettingsActivity extends Activity {
 
     private void load() {
         BarConfig cfg = BarConfig.fromPrefs(prefs);
-        enabledBox.setChecked(cfg.enabled());
+        enabledSwitch.setChecked(cfg.enabled());
         edgeSlider.set(cfg.edgeDistanceDp());
         sideSlider.set(cfg.sideMarginDp());
         textSizeSlider.set(cfg.textSizeSp());
@@ -231,7 +237,7 @@ public final class SettingsActivity extends Activity {
     }
 
     private void loadDefaults() {
-        enabledBox.setChecked(true);
+        enabledSwitch.setChecked(true);
         edgeSlider.set(BarConfig.DEF_EDGE_DISTANCE);
         sideSlider.set(BarConfig.DEF_SIDE_MARGIN);
         textSizeSlider.set(BarConfig.DEF_TEXT_SIZE);
@@ -244,14 +250,14 @@ public final class SettingsActivity extends Activity {
     // ---------- 组件 ----------
 
     /**
-     * 一节内容 = 一张白色圆角卡片（圆角 18dp、内边距 16dp、卡片之间 12dp 间隙、带一点阴影）。
-     * 标题用比主色更深的蓝 {@code accent_deep}。
+     * 一节内容 = 一张卡片：MD3 Medium 圆角 12dp、Level1 阴影 1dp。
+     * 标题用 Title Medium（16sp、中等字重、正文色）——MD3 里标题不染色。
      */
     private LinearLayout card(LinearLayout parent, String title) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(roundRect(color(R.color.card_bg), dp(18)));
-        card.setElevation(dp(3));   // 卡片阴影：让白卡片从浅灰底上"浮"起来
+        card.setBackground(roundRect(color(R.color.md_surface_bright), dp(12)));
+        card.setElevation(dp(1));
         int p = dp(16);
         card.setPadding(p, p, p, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -261,18 +267,20 @@ public final class SettingsActivity extends Activity {
 
         TextView head = new TextView(this);
         head.setText(title);
-        head.setTextSize(17f);
-        head.setTextColor(color(R.color.accent_deep));
+        head.setTextSize(16f);
+        head.setTypeface(medium);
+        head.setTextColor(color(R.color.md_on_surface));
         card.addView(head);
         parent.addView(card);
         return card;
     }
 
+    /** Body Small：说明文字 */
     private TextView hint(String text) {
         TextView view = new TextView(this);
         view.setText(text);
         view.setTextSize(12f);
-        view.setTextColor(color(R.color.text_hint));
+        view.setTextColor(color(R.color.md_on_surface_variant));
         return view;
     }
 
@@ -291,21 +299,26 @@ public final class SettingsActivity extends Activity {
         TextView name = new TextView(this);
         name.setText(title);
         name.setTextSize(16f);
-        name.setTextColor(color(R.color.text_main));
+        name.setTextColor(color(R.color.md_on_surface));
         box.addView(name);
-
         box.addView(hint(desc));
         head.addView(box);
 
         TextView valueText = new TextView(this);
         valueText.setTextSize(16f);
-        valueText.setTextColor(color(R.color.text_main));
+        valueText.setTypeface(medium);
+        valueText.setTextColor(color(R.color.md_primary));
         head.addView(valueText);
         card.addView(head);
 
         SeekBar bar = new SeekBar(this);
         bar.setMax(max - min);
         bar.setPadding(0, dp(6), 0, dp(6));
+        ColorStateList accent = ColorStateList.valueOf(color(R.color.md_primary));
+        bar.setProgressTintList(accent);
+        bar.setThumbTintList(accent);
+        bar.setProgressBackgroundTintList(
+                ColorStateList.valueOf(color(R.color.md_surface_container_high)));
         card.addView(bar);
 
         final Slider slider = new Slider(bar, valueText, min, unit);
@@ -326,21 +339,25 @@ public final class SettingsActivity extends Activity {
     }
 
     /**
-     * 自绘按钮：主按钮=蓝底白字，次按钮=很浅的蓝底黑字。
-     * 不用系统默认样式的 Button —— 它自带的配色和这套界面不搭。
+     * MD3 按钮（胶囊）：主按钮 = 主色底 + on-primary 字；次按钮 = tonal（容器色底）。
+     * 都带涟漪反馈；用 TextView 自绘，不用系统默认样式的 Button。
      */
     private TextView actionButton(String text, boolean primary, View.OnClickListener listener) {
+        float radius = dp(28);
         TextView view = new TextView(this);
         view.setText(text);
-        view.setTextSize(15f);
+        view.setTextSize(14f);
+        view.setTypeface(medium);
         view.setGravity(Gravity.CENTER);
-        view.setPadding(dp(16), dp(14), dp(16), dp(14));
+        view.setPadding(dp(20), dp(12), dp(20), dp(12));
+        view.setMinHeight(dp(40));
         if (primary) {
-            view.setTextColor(0xFFFFFFFF);
-            view.setBackground(roundRect(color(R.color.accent), dp(14)));
+            view.setTextColor(color(R.color.md_on_primary));
+            view.setBackground(ripple(roundRect(color(R.color.md_primary), radius), radius));
         } else {
-            view.setTextColor(color(R.color.text_main));
-            view.setBackground(roundRect(color(R.color.accent_soft), dp(14)));
+            view.setTextColor(color(R.color.md_on_primary_container));
+            view.setBackground(ripple(
+                    roundRect(color(R.color.md_primary_container), radius), radius));
         }
         view.setClickable(true);
         view.setOnClickListener(listener);
@@ -355,18 +372,66 @@ public final class SettingsActivity extends Activity {
         TextView name = new TextView(this);
         name.setText(title);
         name.setTextSize(16f);
-        name.setTextColor(color(R.color.text_main));
-        name.setPadding(0, dp(14), 0, 0);
+        name.setTextColor(color(R.color.md_on_surface));
+        name.setPadding(0, dp(14), 0, dp(6));
         card.addView(name);
 
-        EditText edit = new EditText(this);
-        edit.setSingleLine(true);
-        edit.setTextSize(14f);
-        edit.setTextColor(color(R.color.text_main));
+        EditText edit = outlinedEdit(false);
         edit.setHint(def);
         card.addView(edit, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return edit;
+    }
+
+    /** MD3 outlined 输入框：常态 1dp outline-variant 描边，聚焦换 2dp 主色 */
+    private EditText outlinedEdit(boolean multiLine) {
+        EditText edit = new EditText(this);
+        edit.setTextSize(14f);
+        edit.setTextColor(color(R.color.md_on_surface));
+        edit.setHintTextColor(color(R.color.md_on_surface_variant));
+        edit.setBackground(outline(false));
+        edit.setPadding(dp(12), dp(10), dp(12), dp(10));
+        edit.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            public void onFocusChange(View v, boolean hasFocus) {
+                v.setBackground(outline(hasFocus));
+            }
+        });
+        if (multiLine) {
+            edit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+            edit.setMinLines(6);
+            edit.setGravity(Gravity.TOP | Gravity.START);
+        } else {
+            edit.setSingleLine(true);
+        }
+        return edit;
+    }
+
+    private GradientDrawable outline(boolean focused) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color(R.color.md_surface_bright));
+        drawable.setCornerRadius(dp(8));
+        if (focused) {
+            drawable.setStroke(dp(2), color(R.color.md_primary));
+        } else {
+            drawable.setStroke(dp(1), color(R.color.md_outline_variant));
+        }
+        return drawable;
+    }
+
+    /** 选中态 / 未选中态两组颜色（Switch、滑条用） */
+    private ColorStateList states(int checked, int unchecked) {
+        return new ColorStateList(
+                new int[][]{new int[]{android.R.attr.state_checked}, new int[0]},
+                new int[]{checked, unchecked});
+    }
+
+    /** 给按钮补上按压反馈（MD3 状态层） */
+    private RippleDrawable ripple(GradientDrawable content, float radius) {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(0xFFFFFFFF);
+        mask.setCornerRadius(radius);
+        return new RippleDrawable(
+                ColorStateList.valueOf(color(R.color.md_ripple_primary)), content, mask);
     }
 
     private void toast(String text) {

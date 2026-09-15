@@ -41,7 +41,7 @@ import java.util.List;
 final class ImeBar {
 
     private static final String TAG = "ImeBar";
-    private static final String VERSION = "0.12.0";
+    private static final String VERSION = "0.13.0";
     /** 按钮间距固定 8dp */
     private static final int BUTTON_GAP_DP = 8;
     /** 拉取配置的最小间隔，避免频繁跨进程调用 */
@@ -298,7 +298,7 @@ final class ImeBar {
                     if (button.menuItems != null && !button.menuItems.isEmpty()) {
                         View decor = v.getRootView();
                         if (decor instanceof ViewGroup) {
-                            BarMenu.toggle((ViewGroup) decor, context, service, button, cfg);
+                            BarMenu.toggle((ViewGroup) decor, context, service, button);
                         }
                     } else {
                         // 丢到下一轮消息循环再执行：在触摸事件里直接 startActivity，

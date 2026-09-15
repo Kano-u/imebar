@@ -11,6 +11,7 @@ import android.util.Log;
 import android.view.KeyEvent;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -57,6 +58,8 @@ final class BarActions {
                 commitText(service, new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date()));
             } else if ("settings".equals(action)) {
                 openSettings(service);
+            } else if ("log".equals(action) || "copylog".equals(action)) {
+                copyLog(service);
             } else if ("text".equals(action)) {
                 commitText(service, arg == null ? "" : arg);
             } else if ("app".equals(action)) {
@@ -162,6 +165,18 @@ final class BarActions {
             service.startActivity(intent);
         } catch (Throwable t) {
             Log.w(TAG, "打开设置页失败", t);
+        }
+    }
+
+    /** 把输入法进程里的运行日志复制到剪贴板，方便贴出来排查问题 */
+    private static void copyLog(InputMethodService service) {
+        service.requestHideSelf(0);
+        RunLog.add("用户点击了工具栏的「复制日志」");
+        boolean ok = RunLog.copyToClipboard(service);
+        try {
+            Toast.makeText(service, ok ? "日志已复制到剪贴板，去粘贴即可" : "复制失败",
+                    Toast.LENGTH_LONG).show();
+        } catch (Throwable ignored) {
         }
     }
 }

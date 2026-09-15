@@ -59,8 +59,10 @@ final class BarHook {
             hook(module, ims, "onFinishInputView", new Class<?>[]{boolean.class}, dismissMenu);
 
             Log.i(TAG, "已在 " + pkg + " 中安装 hook");
+            RunLog.add("已在 " + pkg + " 安装 hook 完成");
         } catch (Throwable t) {
             Log.e(TAG, "安装 hook 失败: " + pkg, t);
+            RunLog.add("安装 hook 失败 " + pkg + ": " + t);
         }
     }
 
@@ -68,6 +70,7 @@ final class BarHook {
         Method method = findMethod(cls, name, params);
         if (method == null) {
             Log.w(TAG, "这个方法不存在，跳过: " + cls.getName() + "#" + name);
+            RunLog.add("方法不存在，跳过: " + cls.getName() + "#" + name);
             return;
         }
         try {
@@ -87,6 +90,7 @@ final class BarHook {
             Log.i(TAG, "已 hook " + cls.getName() + "#" + name);
         } catch (Throwable t) {
             Log.e(TAG, "hook 失败: " + name, t);
+            RunLog.add("hook 失败 " + name + ": " + t);
         }
     }
 

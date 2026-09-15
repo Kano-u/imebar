@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.Typeface;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -40,11 +41,13 @@ public final class SettingsActivity extends Activity {
     private EditText pillColorBox;
     private EditText barBgBox;
     private EditText buttonsBox;
+    private TextView logView;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(BarConfig.GROUP, MODE_PRIVATE);
+        RunLog.add("打开设置页（模块 App 进程）");
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -102,6 +105,43 @@ public final class SettingsActivity extends Activity {
         help.setPadding(0, dp(8), 0, 0);
         buttons.addView(help);
 
+        // ---------- 运行日志 ----------
+        LinearLayout logCard = card(root, "运行日志");
+        TextView logTip = new TextView(this);
+        logTip.setText("这里显示的是模块 App 进程的日志。输入法进程的日志请用工具栏上的"
+                + "「更多 → 复制日志」按钮取；两边都发我最容易定位问题。");
+        logTip.setTextSize(12f);
+        logTip.setTextColor(0xFF8A8A8E);
+        logCard.addView(logTip);
+
+        logView = new TextView(this);
+        logView.setTextSize(11f);
+        logView.setTypeface(Typeface.MONOSPACE);
+        logView.setTextColor(0xFF1A1A1A);
+        logView.setBackground(roundRect(0xFFF5F5F7, dp(10)));
+        logView.setPadding(dp(10), dp(10), dp(10), dp(10));
+        logView.setText(RunLog.dump());
+        ScrollView logScroll = new ScrollView(this);
+        logScroll.addView(logView);
+        LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(220));
+        logParams.topMargin = dp(8);
+        logCard.addView(logScroll, logParams);
+
+        Button copyLog = new Button(this);
+        copyLog.setText("复制日志");
+        copyLog.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                RunLog.add("点击了设置页的「复制日志」");
+                boolean ok = RunLog.copyToClipboard(SettingsActivity.this);
+                logView.setText(RunLog.dump());
+                Toast.makeText(SettingsActivity.this, ok ? "日志已复制到剪贴板" : "复制失败",
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
+        logCard.addView(copyLog, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         // ---------- 底部按钮 ----------
         Button save = new Button(this);
         save.setText("保存");
@@ -155,6 +195,7 @@ public final class SettingsActivity extends Activity {
         pillColorBox.setText(cfg.pillColorHex());
         barBgBox.setText(cfg.barBackgroundHex());
         buttonsBox.setText(cfg.buttonsRaw());
+        RunLog.add("读取到已保存的配置: " + cfg.summary());
     }
 
     private void loadDefaults() {
@@ -197,7 +238,12 @@ public final class SettingsActivity extends Activity {
             Intent intent = new Intent(BarConfig.ACTION_CONFIG_CHANGED);
             intent.putExtras(cfg.toBundle());
             sendBroadcast(intent);
-        } catch (Throwable ignored) {
+            RunLog.add("保存并广播: " + cfg.summary());
+        } catch (Throwable t) {
+            RunLog.add("广播失败: " + t);
+        }
+        if (logView != null) {
+            logView.setText(RunLog.dump());
         }
         Toast.makeText(this, "已保存并即时生效", Toast.LENGTH_SHORT).show();
     }
@@ -344,6 +390,7 @@ public final class SettingsActivity extends Activity {
                 + "enter 回车 / delete 退格 / left 光标左移 / right 光标右移 / hide 收起键盘\n"
                 + "switch_ime 切换输入法 / insert_date 插入日期 / insert_time 插入时间\n"
                 + "settings 打开本设置页\n"
+                + "log 把输入法进程的运行日志复制到剪贴板（排查问题用）\n"
                 + "text 插入固定文字（第三列写内容）\n"
                 + "app 打开某个 App（第三列写包名） / url 打开网址（第三列写链接）\n\n"
                 + "菜单按钮（第二列写 menu）：\n"

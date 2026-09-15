@@ -65,7 +65,7 @@ public final class BarConfig {
                     + "粘贴|paste\n"
                     + "全选|select_all\n"
                     + "收起键盘|hide\n"
-                    + "更多|menu|切输入法=switch_ime;插入日期=insert_date;插入时间=insert_time;打开设置=settings";
+                    + "更多|menu|切输入法=switch_ime;插入日期=insert_date;插入时间=insert_time;打开设置=settings;复制日志=log";
 
     private final boolean enabled;
     private final boolean bottom;
@@ -234,6 +234,13 @@ public final class BarConfig {
         return enabled + "|" + bottom + "|" + edgeDistance + "|" + sideMargin + "|" + textSize
                 + "|" + opacity + "|" + pill + "|" + stretch + "|" + textColorHex + "|"
                 + pillColorHex + "|" + barBackgroundHex + "|" + buttonsRaw;
+    }
+
+    /** 一行摘要，写日志用 */
+    public String summary() {
+        return "距离" + edgeDistance + " 边距" + sideMargin + " 字号" + textSize + " 透明度" + opacity
+                + " " + (bottom ? "底部" : "顶部") + " " + (pill ? "胶囊" : "文字")
+                + " " + (stretch ? "均分" : "左对齐") + " 按钮=[" + buttonsRaw.replace('\n', '/') + "]";
     }
 
     // ---------- 解析 ----------

@@ -43,7 +43,7 @@ import java.util.List;
 final class ImeBar {
 
     private static final String TAG = "ImeBar";
-    private static final String VERSION = "0.6.0";
+    private static final String VERSION = "0.7.0";
     /** 按钮间距固定 8dp（原版没有这项设置，就不做成可调） */
     private static final int BUTTON_GAP_DP = 8;
     /** 拉取配置的最小间隔，避免频繁跨进程调用 */
@@ -59,6 +59,7 @@ final class ImeBar {
     private static String lastSignature;
     private static boolean receiverRegistered;
     private static boolean firstAttachLogged;
+    private static boolean firstPullLogged;
     private static long lastPullAt;
 
     private ImeBar() {
@@ -86,6 +87,7 @@ final class ImeBar {
 
         if (!firstAttachLogged) {
             firstAttachLogged = true;
+            RunLog.add("首次弹出键盘，生效配置 " + config.summary());
             toast(service, "简易输入法工具栏 " + VERSION + " 已生效：距离 " + config.edgeDistanceDp()
                     + "dp / 字号 " + config.textSizeSp() + "dp / 透明度 " + config.opacityPercent() + "%");
         }
@@ -120,13 +122,19 @@ final class ImeBar {
                             ConfigProvider.METHOD_GET_CONFIG, null, null);
                 } catch (Throwable t) {
                     Log.w(TAG, "拉取配置失败（模块 App 可能被强制停止）", t);
+                    RunLog.add("拉取配置失败: " + t);
                 }
                 if (result == null) {
+                    RunLog.add("拉取配置返回空");
                     return;
                 }
                 final BarConfig config = BarConfig.fromBundle(result);
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                     public void run() {
+                        if (!firstPullLogged) {
+                            firstPullLogged = true;
+                            RunLog.add("首次拉取成功: " + config.summary());
+                        }
                         applyConfig(context, config, "拉取");
                     }
                 });
@@ -157,8 +165,10 @@ final class ImeBar {
             int flags = Build.VERSION.SDK_INT >= 33 ? Context.RECEIVER_EXPORTED : 0;
             context.registerReceiver(receiver, filter, null, null, flags);
             Log.i(TAG, "已注册配置变更接收器");
+            RunLog.add("已注册配置变更接收器");
         } catch (Throwable t) {
             Log.w(TAG, "注册配置变更接收器失败", t);
+            RunLog.add("注册配置变更接收器失败: " + t);
         }
     }
 
@@ -171,6 +181,7 @@ final class ImeBar {
         }
         boolean changed = previous == null || !previous.signature().equals(config.signature());
         if (changed) {
+            RunLog.add("配置更新(" + how + "): " + config.summary());
             Log.i(TAG, "配置已更新(" + how + ")：距离 " + config.edgeDistanceDp() + "dp, 边距 "
                     + config.sideMarginDp() + "dp, 字号 " + config.textSizeSp() + "dp, 透明度 "
                     + config.opacityPercent() + "%, 位置 " + (config.isBottom() ? "底部" : "顶部"));
@@ -233,6 +244,7 @@ final class ImeBar {
             root.addView(bar, lp);
             lastBar = bar;
             lastSignature = signature;
+            RunLog.add("重建工具栏: " + cfg.summary());
             Log.i(TAG, "工具栏已挂载(" + (cfg.isBottom() ? "键盘底部" : "键盘顶部")
                     + "), 按钮数=" + cfg.buttons().size()
                     + ", 底部距离=" + cfg.edgeDistanceDp() + "dp"
@@ -356,4 +368,5 @@ final class ImeBar {
         } catch (Throwable ignored) {
         }
     }
+
 }

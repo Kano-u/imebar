@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 没有 ActionBar：标题画在内容里，省掉一层系统栏（也顺手修掉"顶部文字被顶栏盖住"） -->
+    <!--
+      没有 ActionBar：标题画在内容里，省掉一层系统栏（也顺手修掉"顶部文字被顶栏盖住"）。
+      colorAccent / colorControlActivated 决定复选框的对勾和 SeekBar 的进度色——就是那两处浅绿。
+    -->
     <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
         <item name="android:windowBackground">@color/page_bg</item>
         <item name="android:colorAccent">@color/green_accent</item>
         <item name="android:colorControlActivated">@color/green_accent</item>
         <item name="android:colorControlHighlight">@color/green_ripple</item>
-        <item name="android:statusBarColor">@color/green_soft</item>
+        <item name="android:statusBarColor">@color/page_bg</item>
         <item name="android:navigationBarColor">@color/page_bg</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>

@@ -32,13 +32,15 @@ import android.widget.Toast;
  *   - 文本框（颜色 / 按钮）：停止输入 0.6 秒后保存；离开页面时再补一次
  * 每次保存都会写偏好 + 广播配置数值给输入法进程。
  *
- * 配色统一走资源里的浅绿（见 res/values/colors.xml），不在这里散落颜色常量。
+ * 界面走简约风：白底、黑字，浅绿只出现在对勾、数值条和按钮上（配色见 res/values/colors.xml）。
  */
 public final class SettingsActivity extends Activity {
 
     private SharedPreferences prefs;
     /** 正在把已保存的值填进控件时，不要触发自动保存 */
     private boolean loading = true;
+    /** 第一节前面不画分隔线 */
+    private boolean firstSection = true;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable pendingTextApply;
@@ -69,8 +71,8 @@ public final class SettingsActivity extends Activity {
         TextView title = new TextView(this);
         title.setText(R.string.app_name);
         title.setTextSize(20f);
-        title.setTextColor(color(R.color.green_accent));
-        title.setPadding(dp(6), dp(6), 0, dp(10));
+        title.setTextColor(color(R.color.text_main));
+        title.setPadding(dp(2), dp(8), 0, dp(4));
         root.addView(title);
 
         // ---------- 显示设置 ----------
@@ -151,7 +153,7 @@ public final class SettingsActivity extends Activity {
         adbOutput.setTextSize(12f);
         adbOutput.setTypeface(Typeface.MONOSPACE);
         adbOutput.setTextColor(color(R.color.text_main));
-        adbOutput.setBackground(roundRect(color(R.color.green_soft), dp(10)));
+        adbOutput.setBackground(roundRect(color(R.color.box_bg), dp(10)));
         adbOutput.setPadding(dp(10), dp(10), dp(10), dp(10));
         adbOutput.setText("（执行结果会显示在这里）");
         LinearLayout.LayoutParams outParams = new LinearLayout.LayoutParams(
@@ -168,7 +170,7 @@ public final class SettingsActivity extends Activity {
         logView.setTextSize(11f);
         logView.setTypeface(Typeface.MONOSPACE);
         logView.setTextColor(color(R.color.text_main));
-        logView.setBackground(roundRect(color(R.color.green_soft), dp(10)));
+        logView.setBackground(roundRect(color(R.color.box_bg), dp(10)));
         logView.setPadding(dp(10), dp(10), dp(10), dp(10));
         logView.setText(RunLog.dump());
         ScrollView logScroll = new ScrollView(this);
@@ -350,24 +352,34 @@ public final class SettingsActivity extends Activity {
 
     // ---------- 组件 ----------
 
+    /**
+     * 一节内容。简约风：不画卡片底，白底黑字，节与节之间用一条细灰线分开。
+     */
     private LinearLayout card(LinearLayout parent, String title) {
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(roundRect(color(R.color.card_bg), dp(18)));
-        int p = dp(16);
-        card.setPadding(p, p, p, p);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(12);
-        card.setLayoutParams(lp);
+        if (!firstSection) {
+            parent.addView(divider());
+        }
+        firstSection = false;
+
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.VERTICAL);
+        section.setPadding(dp(2), dp(14), dp(2), dp(14));
 
         TextView head = new TextView(this);
         head.setText(title);
-        head.setTextSize(18f);
-        head.setTextColor(color(R.color.green_accent));
-        card.addView(head);
-        parent.addView(card);
-        return card;
+        head.setTextSize(17f);
+        head.setTextColor(color(R.color.text_main));
+        section.addView(head);
+        parent.addView(section);
+        return section;
+    }
+
+    private View divider() {
+        View line = new View(this);
+        line.setBackgroundColor(color(R.color.line));
+        line.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
+        return line;
     }
 
     private TextView hint(String text) {
@@ -401,7 +413,7 @@ public final class SettingsActivity extends Activity {
 
         TextView valueText = new TextView(this);
         valueText.setTextSize(16f);
-        valueText.setTextColor(color(R.color.green_accent));
+        valueText.setTextColor(color(R.color.text_main));
         head.addView(valueText);
         card.addView(head);
 
@@ -428,7 +440,7 @@ public final class SettingsActivity extends Activity {
     }
 
     /**
-     * 自绘按钮：主按钮=浅绿底白字，次按钮=浅绿浅底深色字。
+     * 自绘按钮：主按钮=浅绿底白字，次按钮=很浅的绿底黑字。
      * 不用系统默认样式的 Button —— 它自带的配色和这套界面不搭。
      */
     private TextView actionButton(String text, boolean primary, View.OnClickListener listener) {

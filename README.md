@@ -156,6 +156,7 @@ libxposed 的远程配置是**内存快照**，创建之后不会自己更新，
 | `delete` | 退格 | 无 |
 | `left` / `right` | 光标左移 / 右移 | 无 |
 | `hide` | 收起键盘 | 无 |
+| `home` | 回主页（免 root，等价于 `input keyevent 3`） | 无 |
 | `text` | 插入一段固定文字 | `arg` 写文字 |
 | `app` | 打开某个 App | `arg` 写包名 |
 | `url` | 用浏览器打开链接 | `arg` 写网址 |
@@ -202,25 +203,52 @@ libxposed 的远程配置是**内存快照**，创建之后不会自己更新，
 
 ---
 
-### ADB 命令（需要 root）
+### ADB 命令（设备内 shell，需要 root）
 
-设置页里没有单独的调试界面 —— 直接写进「按钮」那一栏就行：
+`adb` 动作执行的是**设备内部**的一条 shell 命令，不是在电脑上跑 adb。设置页里没有单独的调试界面，
+直接写进「按钮」那一栏：
+
+```json
+[
+  {"label": "截屏", "action": "adb", "arg": "screencap -p /sdcard/imebar.png"},
+  {"label": "关掉微信", "action": "adb", "arg": "am force-stop com.tencent.mm"}
+]
+```
+
+**写法上最容易踩的坑**：`arg` 只写设备里的命令本身，别带 `adb shell`。
 
 ```
-截屏|adb|screencap -p /sdcard/imebar.png
-返回|adb|input keyevent 4
-关掉微信|adb|am force-stop com.tencent.mm
+✗ adb shell input keyevent 3     → 设备里没有 adb 程序，报 127（sh: adb: inaccessible or not found）
+✓ input keyevent 3
 ```
 
-命令跑在后台线程里（最多等 10 秒，不会卡住输入法），结果写进运行日志，
-并用一句 Toast 告诉你成功还是失败。
+（带了前缀也不会死：程序会自动把开头的 `adb shell ` / `adb ` 去掉。但知道一下更省事。）
 
-几点说明：
+**为什么这类命令要 root**：`input`、`am`、`pm` 这些命令要求发起者是 shell(2000) 或 root。
+本模块跑在输入法进程里，身份就是输入法 App 的普通 UID，系统会直接拒绝，典型报错是
+`Injecting input events requires the caller to have the INJECT_EVENTS permission`（退出码 255）。
+所以执行顺序是：
 
-* **需要 root**（走 `su -c`）。没有 su 时会自动按普通 App 身份再试一次，结果会明确告诉你；
-* root 被拒（Magisk 授权弹窗点了拒绝）时会提示"root 被拒绝了"，命令不会静默失败；
-* 命令的文本就存在本机偏好里，别把设备借给别人乱翻；
-* 这条通道是为了让你自由组合动作，默认按钮里不含它，只有你自己写了才存在。
+1. 找一个能用的 `su`（PATH 里的 su，加上 `/system/bin/su`、`/system/xbin/su`、`/sbin/su`、
+   `/debug_ramdisk/su` 等常见位置），用 `su -c` 跑；**第一次会弹 root 授权框，请点允许**
+   （这一步最多等 30 秒，别被超时打断）；
+2. 一个可用的 su 都没有（设备没 root，或 root 管理器没给本输入法放行）→ 退化成普通身份再跑一次，
+   并把系统给的真实原因写进日志（"这条命令需要 root（或 Shizuku）"）；
+3. 命令在后台线程里跑（一般 10 秒超时，不会卡住输入法），结果写进运行日志 + 一句 Toast。
+
+**不想 root 怎么办**：`input` / `am` 这类命令在普通 App 身份下没有替代方案，除非接 Shizuku
+（另装 Shizuku 并授权，能拿到 shell 身份）。这两个常见需求倒是不用 root：
+
+```json
+[
+  {"label": "回主页", "action": "home"},
+  {"label": "打开微信", "action": "app", "arg": "com.tencent.mm"}
+]
+```
+
+* `home` 是专门加的免 root 动作（用桌面的启动入口实现，等价于 `input keyevent 3`）；
+* 「返回」在键盘上通常就是「收起键盘」（`hide`）；
+* 命令文本存在本机偏好里，别把设备借给别人乱翻；默认按钮里不含 `adb`，只有你自己写了才存在。
 
 ---
 

@@ -51,6 +51,8 @@ final class BarActions {
                 sendKey(service, KeyEvent.KEYCODE_DPAD_RIGHT);
             } else if ("hide".equals(action)) {
                 service.requestHideSelf(0);
+            } else if ("home".equals(action)) {
+                goHome(service);
             } else if ("text".equals(action)) {
                 commitText(service, arg == null ? "" : arg);
             } else if ("app".equals(action)) {
@@ -127,6 +129,22 @@ final class BarActions {
         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         context.startActivity(intent);
+    }
+
+    /**
+     * 回主页。用桌面的启动入口实现，**不需要 root** —— 是 `input keyevent 3` 的免 root 替代。
+     * 输入法作为"当前 IME"是被允许启动 Activity 的，所以在国产 ROM 上一般也能正常回到桌面。
+     */
+    private static void goHome(Context context) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_MAIN);
+            intent.addCategory(Intent.CATEGORY_HOME);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+        } catch (Throwable t) {
+            Log.w(TAG, "回主页失败", t);
+            RunLog.add("回主页失败: " + t);
+        }
     }
 
     /**

@@ -257,12 +257,6 @@ public final class BarConfig {
         return list;
     }
 
-    /**
-     * 一个 JSON 对象 → 一个节点（按钮或菜单项，本来就是同一种东西）。
-     * label 没写就用 action 顶上，两个都空就丢掉这个节点。
-     * action 是 menu 时递归解析子菜单——子项里还能再套 menu，深度不限；
-     * 子菜单一条都没有的节点整个丢掉（点开一个空菜单没意义）。
-     */
     private static Button toButton(JSONObject obj) {
         String label = field(obj, "label");
         String action = field(obj, "action");
@@ -348,14 +342,11 @@ public final class BarConfig {
         return value > max ? max : value;
     }
 
-    /**
-     * 一个按钮，或者一条菜单项——两者结构一样，所以菜单里放的就是 Button，可以任意层级嵌套。
-     */
     public static final class Button {
         public final String label;
         public final String action;
         public final String arg;
-        /** 只有 action 是 "menu" 时非空；里面还是 Button，能继续套菜单 */
+        /** 只有 action 是 "menu" 时非空；里面还是 Button，所以菜单能任意层级嵌套 */
         public final List<Button> menuItems;
 
         Button(String label, String action, String arg, List<Button> menuItems) {

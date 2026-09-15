@@ -51,9 +51,9 @@ public final class BarConfig {
     public static final String LAYOUT_STRETCH = "stretch";
     public static final String LAYOUT_LEFT = "left";
 
-    public static final int DEF_EDGE_DISTANCE = 12;
-    public static final int DEF_SIDE_MARGIN = 15;
-    public static final int DEF_TEXT_SIZE = 12;
+    public static final int DEF_EDGE_DISTANCE = 0;
+    public static final int DEF_SIDE_MARGIN = 50;
+    public static final int DEF_TEXT_SIZE = 15;
     public static final int DEF_OPACITY = 80;
 
     public static final String DEF_TEXT_COLOR = "#202124";
@@ -108,13 +108,14 @@ public final class BarConfig {
         }
         return new BarConfig(
                 getBoolean(prefs, KEY_ENABLED, true),
-                !POSITION_TOP.equals(getString(prefs, KEY_POSITION, POSITION_BOTTOM)),
+                // 位置/按钮样式/排列方式固定为：键盘底部、纯文字、均分铺满（不做成可选项）
+                true,
                 getInt(prefs, KEY_EDGE_DISTANCE, DEF_EDGE_DISTANCE),
                 getInt(prefs, KEY_SIDE_MARGIN, DEF_SIDE_MARGIN),
                 getInt(prefs, KEY_TEXT_SIZE, DEF_TEXT_SIZE),
                 getInt(prefs, KEY_OPACITY, DEF_OPACITY),
-                STYLE_PILL.equals(getString(prefs, KEY_STYLE, STYLE_TEXT)),
-                !LAYOUT_LEFT.equals(getString(prefs, KEY_LAYOUT, LAYOUT_STRETCH)),
+                false,
+                true,
                 getString(prefs, KEY_TEXT_COLOR, DEF_TEXT_COLOR),
                 getString(prefs, KEY_PILL_BG, DEF_PILL_BG),
                 getString(prefs, KEY_BAR_BG, DEF_BAR_BG),
@@ -127,13 +128,13 @@ public final class BarConfig {
         }
         return new BarConfig(
                 bundle.getBoolean(KEY_ENABLED, true),
-                !POSITION_TOP.equals(bundle.getString(KEY_POSITION, POSITION_BOTTOM)),
+                true,
                 bundle.getInt(KEY_EDGE_DISTANCE, DEF_EDGE_DISTANCE),
                 bundle.getInt(KEY_SIDE_MARGIN, DEF_SIDE_MARGIN),
                 bundle.getInt(KEY_TEXT_SIZE, DEF_TEXT_SIZE),
                 bundle.getInt(KEY_OPACITY, DEF_OPACITY),
-                STYLE_PILL.equals(bundle.getString(KEY_STYLE, STYLE_TEXT)),
-                !LAYOUT_LEFT.equals(bundle.getString(KEY_LAYOUT, LAYOUT_STRETCH)),
+                false,
+                true,
                 bundle.getString(KEY_TEXT_COLOR, DEF_TEXT_COLOR),
                 bundle.getString(KEY_PILL_BG, DEF_PILL_BG),
                 bundle.getString(KEY_BAR_BG, DEF_BAR_BG),

@@ -43,7 +43,7 @@ import java.util.List;
 final class ImeBar {
 
     private static final String TAG = "ImeBar";
-    private static final String VERSION = "0.8.0";
+    private static final String VERSION = "0.9.0";
     /** 按钮间距固定 8dp（原版没有这项设置，就不做成可调） */
     private static final int BUTTON_GAP_DP = 8;
     /** 拉取配置的最小间隔，避免频繁跨进程调用 */

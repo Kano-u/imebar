@@ -84,7 +84,8 @@ final class BarMenu {
         card.setClickable(true); // 吃掉点击，避免点到卡片时把菜单关掉
 
         GradientDrawable cardBackground = new GradientDrawable();
-        cardBackground.setColor(config.pillColor());
+        // 菜单卡片用干净的白色（和设置页的卡片一致），配深色文字
+        cardBackground.setColor(0xFFFFFFFF);
         cardBackground.setCornerRadius(dp(context, 26));
         card.setBackground(cardBackground);
         card.setMinimumWidth(dp(context, 196));

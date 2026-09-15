@@ -14,13 +14,10 @@ import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -54,9 +51,6 @@ public final class SettingsActivity extends Activity {
     private Slider sideSlider;
     private Slider textSizeSlider;
     private Slider opacitySlider;
-    private RadioGroup positionGroup;
-    private RadioGroup styleGroup;
-    private RadioGroup layoutGroup;
     private EditText textColorBox;
     private EditText pillColorBox;
     private EditText barBgBox;
@@ -104,11 +98,13 @@ public final class SettingsActivity extends Activity {
         opacitySlider = addSlider(display, "显示透明度", "工具栏整体显示透明度",
                 20, 100, BarConfig.DEF_OPACITY, " %");
 
-        // ---------- 样式 ----------
-        LinearLayout style = card(root, "样式");
-        positionGroup = addRadio(style, "位置", new String[]{"键盘底部", "键盘顶部"}, 0);
-        styleGroup = addRadio(style, "按钮样式", new String[]{"纯文字", "胶囊"}, 0);
-        layoutGroup = addRadio(style, "排列方式", new String[]{"均分铺满", "左对齐"}, 0);
+        // ---------- 配色 ----------
+        LinearLayout style = card(root, "配色");
+        TextView styleTip = new TextView(this);
+        styleTip.setText("位置固定为「键盘底部」、按钮固定为「纯文字」、排列固定为「均分铺满」，不需要选择。");
+        styleTip.setTextSize(12f);
+        styleTip.setTextColor(0xFF8A8A8E);
+        style.addView(styleTip);
         textColorBox = addColor(style, "文字颜色", BarConfig.DEF_TEXT_COLOR);
         pillColorBox = addColor(style, "胶囊底色", BarConfig.DEF_PILL_BG);
         barBgBox = addColor(style, "整条栏背景色", BarConfig.DEF_BAR_BG);
@@ -170,9 +166,7 @@ public final class SettingsActivity extends Activity {
         logParams.topMargin = dp(8);
         logCard.addView(logScroll, logParams);
 
-        Button copyLog = new Button(this);
-        copyLog.setText("复制日志");
-        copyLog.setOnClickListener(new View.OnClickListener() {
+        logCard.addView(actionButton("复制日志", false, new View.OnClickListener() {
             public void onClick(View v) {
                 RunLog.add("点击了设置页的「复制日志」");
                 boolean ok = RunLog.copyToClipboard(SettingsActivity.this);
@@ -180,31 +174,21 @@ public final class SettingsActivity extends Activity {
                 Toast.makeText(SettingsActivity.this, ok ? "日志已复制到剪贴板" : "复制失败",
                         Toast.LENGTH_SHORT).show();
             }
-        });
-        logCard.addView(copyLog, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }));
 
-        // ---------- 底部按钮（现在只是兜底，改一下就已经自动保存了） ----------
-        Button applyButton = new Button(this);
-        applyButton.setText("立即应用（一般不用点，改动已自动保存）");
-        applyButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                applyNow("点击立即应用");
-            }
-        });
-        root.addView(applyButton, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        Button reset = new Button(this);
-        reset.setText("恢复默认");
-        reset.setOnClickListener(new View.OnClickListener() {
+        // ---------- 底部按钮（改动已自动保存，这两个只是兜底） ----------
+        root.addView(actionButton("立即应用（改动已自动保存，一般不用点）", true,
+                new View.OnClickListener() {
+                    public void onClick(View v) {
+                        applyNow("点击立即应用");
+                    }
+                }));
+        root.addView(actionButton("恢复默认", false, new View.OnClickListener() {
             public void onClick(View v) {
                 loadDefaults();
                 applyNow("恢复默认");
             }
-        });
-        root.addView(reset, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }));
 
         TextView footer = new TextView(this);
         footer.setText("本模块没有联网权限、没有存储权限、不会执行 shell。");
@@ -237,16 +221,10 @@ public final class SettingsActivity extends Activity {
         try {
             prefs.edit()
                     .putBoolean(BarConfig.KEY_ENABLED, enabledBox.isChecked())
-                    .putString(BarConfig.KEY_POSITION,
-                            radioIndex(positionGroup) == 0 ? BarConfig.POSITION_BOTTOM : BarConfig.POSITION_TOP)
                     .putInt(BarConfig.KEY_EDGE_DISTANCE, edgeSlider.value())
                     .putInt(BarConfig.KEY_SIDE_MARGIN, sideSlider.value())
                     .putInt(BarConfig.KEY_TEXT_SIZE, textSizeSlider.value())
                     .putInt(BarConfig.KEY_OPACITY, opacitySlider.value())
-                    .putString(BarConfig.KEY_STYLE,
-                            radioIndex(styleGroup) == 1 ? BarConfig.STYLE_PILL : BarConfig.STYLE_TEXT)
-                    .putString(BarConfig.KEY_LAYOUT,
-                            radioIndex(layoutGroup) == 1 ? BarConfig.LAYOUT_LEFT : BarConfig.LAYOUT_STRETCH)
                     .putString(BarConfig.KEY_TEXT_COLOR, textColorBox.getText().toString().trim())
                     .putString(BarConfig.KEY_PILL_BG, pillColorBox.getText().toString().trim())
                     .putString(BarConfig.KEY_BAR_BG, barBgBox.getText().toString().trim())
@@ -301,9 +279,6 @@ public final class SettingsActivity extends Activity {
         sideSlider.set(cfg.sideMarginDp());
         textSizeSlider.set(cfg.textSizeSp());
         opacitySlider.set(cfg.opacityPercent());
-        positionGroup.check(positionGroup.getChildAt(cfg.isBottom() ? 0 : 1).getId());
-        styleGroup.check(styleGroup.getChildAt(cfg.isPill() ? 1 : 0).getId());
-        layoutGroup.check(layoutGroup.getChildAt(cfg.isStretch() ? 0 : 1).getId());
         textColorBox.setText(cfg.textColorHex());
         pillColorBox.setText(cfg.pillColorHex());
         barBgBox.setText(cfg.barBackgroundHex());
@@ -323,9 +298,6 @@ public final class SettingsActivity extends Activity {
         sideSlider.set(BarConfig.DEF_SIDE_MARGIN);
         textSizeSlider.set(BarConfig.DEF_TEXT_SIZE);
         opacitySlider.set(BarConfig.DEF_OPACITY);
-        positionGroup.check(positionGroup.getChildAt(0).getId());
-        styleGroup.check(styleGroup.getChildAt(0).getId());
-        layoutGroup.check(layoutGroup.getChildAt(0).getId());
         textColorBox.setText(BarConfig.DEF_TEXT_COLOR);
         pillColorBox.setText(BarConfig.DEF_PILL_BG);
         barBgBox.setText(BarConfig.DEF_BAR_BG);
@@ -416,33 +388,30 @@ public final class SettingsActivity extends Activity {
         return slider;
     }
 
-    private RadioGroup addRadio(LinearLayout card, String title, String[] labels, int selected) {
-        TextView name = new TextView(this);
-        name.setText(title);
-        name.setTextSize(16f);
-        name.setTextColor(0xFF1A1A1A);
-        name.setPadding(0, dp(14), 0, 0);
-        card.addView(name);
-
-        RadioGroup group = new RadioGroup(this);
-        group.setOrientation(RadioGroup.HORIZONTAL);
-        for (int i = 0; i < labels.length; i++) {
-            RadioButton radio = new RadioButton(this);
-            radio.setText(labels[i]);
-            radio.setTextSize(14f);
-            radio.setId(View.generateViewId());
-            group.addView(radio);
-            if (i == selected) {
-                group.check(radio.getId());
-            }
+    /**
+     * 自绘按钮：和卡片同一套配色（主按钮=青底白字，次按钮=浅青底青字）。
+     * 不用系统默认样式的 Button —— 它自带的背景/文字配色和这套界面不搭。
+     */
+    private TextView actionButton(String text, boolean primary, View.OnClickListener listener) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(15f);
+        view.setGravity(Gravity.CENTER);
+        view.setPadding(dp(16), dp(14), dp(16), dp(14));
+        if (primary) {
+            view.setTextColor(0xFFFFFFFF);
+            view.setBackground(roundRect(0xFF0F7B6C, dp(14)));
+        } else {
+            view.setTextColor(0xFF0F7B6C);
+            view.setBackground(roundRect(0xFFE3F1EF, dp(14)));
         }
-        group.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
-            public void onCheckedChanged(RadioGroup group, int checkedId) {
-                applyNow("选择项");
-            }
-        });
-        card.addView(group);
-        return group;
+        view.setClickable(true);
+        view.setOnClickListener(listener);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(8);
+        view.setLayoutParams(lp);
+        return view;
     }
 
     private EditText addColor(LinearLayout card, String title, String def) {
@@ -471,16 +440,6 @@ public final class SettingsActivity extends Activity {
         card.addView(edit, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return edit;
-    }
-
-    private int radioIndex(RadioGroup group) {
-        int checked = group.getCheckedRadioButtonId();
-        for (int i = 0; i < group.getChildCount(); i++) {
-            if (group.getChildAt(i).getId() == checked) {
-                return i;
-            }
-        }
-        return 0;
     }
 
     private GradientDrawable roundRect(int color, float radius) {

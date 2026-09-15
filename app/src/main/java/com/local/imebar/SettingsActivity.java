@@ -97,8 +97,10 @@ public final class SettingsActivity extends Activity {
         buttons.addView(hint("一行一个：显示文字|动作|参数。以 # 开头的行是注释，会被忽略。"));
 
         buttonsBox = outlinedEdit(true);
-        buttons.addView(buttonsBox, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams boxParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        boxParams.topMargin = dp(8);
+        buttons.addView(buttonsBox, boxParams);
 
         TextView help = hint(helpText());
         help.setPadding(0, dp(8), 0, 0);
@@ -120,7 +122,7 @@ public final class SettingsActivity extends Activity {
         logScroll.addView(logView);
         LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(200));
-        logParams.topMargin = dp(8);
+        logParams.topMargin = dp(12);
         logCard.addView(logScroll, logParams);
 
         logCard.addView(actionButton("复制日志", false, new View.OnClickListener() {
@@ -251,7 +253,8 @@ public final class SettingsActivity extends Activity {
 
     /**
      * 一节内容 = 一张卡片：MD3 Medium 圆角 12dp、Level1 阴影 1dp。
-     * 标题用 Title Medium（16sp、中等字重、正文色）——MD3 里标题不染色。
+     * 标题用 Title Medium（16sp、中等字重）+ 主色蓝：全页只有这一种蓝，
+     * 和主按钮/开关/滑条同色，克制、不花。
      */
     private LinearLayout card(LinearLayout parent, String title) {
         LinearLayout card = new LinearLayout(this);
@@ -262,14 +265,16 @@ public final class SettingsActivity extends Activity {
         card.setPadding(p, p, p, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(12);
+        lp.bottomMargin = dp(16);
         card.setLayoutParams(lp);
 
         TextView head = new TextView(this);
         head.setText(title);
         head.setTextSize(16f);
         head.setTypeface(medium);
-        head.setTextColor(color(R.color.md_on_surface));
+        head.setTextColor(color(R.color.md_primary));
+        // 标题 → 内容留 8dp，别和下面的开关/提示挤在一起
+        head.setPadding(0, 0, 0, dp(8));
         card.addView(head);
         parent.addView(card);
         return card;
@@ -289,7 +294,7 @@ public final class SettingsActivity extends Activity {
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(0, dp(14), 0, 0);
+        head.setPadding(0, dp(20), 0, 0);
 
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -363,7 +368,7 @@ public final class SettingsActivity extends Activity {
         view.setOnClickListener(listener);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(8);
+        lp.topMargin = dp(12);
         view.setLayoutParams(lp);
         return view;
     }
@@ -373,7 +378,7 @@ public final class SettingsActivity extends Activity {
         name.setText(title);
         name.setTextSize(16f);
         name.setTextColor(color(R.color.md_on_surface));
-        name.setPadding(0, dp(14), 0, dp(6));
+        name.setPadding(0, dp(16), 0, dp(8));
         card.addView(name);
 
         EditText edit = outlinedEdit(false);

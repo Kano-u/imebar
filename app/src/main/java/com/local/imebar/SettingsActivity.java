@@ -7,17 +7,12 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.text.Editable;
 import android.text.InputType;
-import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.CheckBox;
-import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -26,23 +21,15 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * 设置页。改动即自动保存并即时下发，不需要点保存：
- *   - 滑块：松手时保存
- *   - 开关：改变时保存
- *   - 文本框（颜色 / 按钮）：停止输入 0.6 秒后保存；离开页面时再补一次
- * 每次保存都会写偏好 + 广播配置数值给输入法进程。
+ * 设置页：改完点「保存」才生效（手动保存，不做自动保存）。
  *
- * 界面走简约风：白色圆角卡片 + 黑字，卡片之间留出间隙；
- * 浅绿只出现在对勾、数值条和按钮上（配色见 res/values/colors.xml）。
+ * 页面是简约卡片风：浅灰底 + 白色圆角卡片，一节一张卡，左右和卡片之间都留间隙；
+ * 卡片标题用比主色再深一点的绿，浅绿（对勾 / 数值条 / 按钮）只做点缀。
+ * 颜色统一在 res/values/colors.xml 里，不在代码里散落色值。
  */
 public final class SettingsActivity extends Activity {
 
     private SharedPreferences prefs;
-    /** 正在把已保存的值填进控件时，不要触发自动保存 */
-    private boolean loading = true;
-
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private Runnable pendingTextApply;
 
     private CheckBox enabledBox;
     private Slider edgeSlider;
@@ -52,8 +39,6 @@ public final class SettingsActivity extends Activity {
     private EditText textColorBox;
     private EditText barBgBox;
     private EditText buttonsBox;
-    private EditText adbBox;
-    private TextView adbOutput;
     private TextView logView;
 
     @Override
@@ -64,14 +49,14 @@ public final class SettingsActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(12);
-        root.setPadding(pad, dp(10), pad, dp(20));
+        int side = dp(16);   // 两侧留白
+        root.setPadding(side, dp(12), side, dp(20));
 
         TextView title = new TextView(this);
         title.setText(R.string.app_name);
         title.setTextSize(20f);
         title.setTextColor(color(R.color.text_main));
-        title.setPadding(dp(2), dp(8), 0, dp(4));
+        title.setPadding(dp(4), dp(4), 0, dp(12));
         root.addView(title);
 
         // ---------- 显示设置 ----------
@@ -80,11 +65,6 @@ public final class SettingsActivity extends Activity {
         enabledBox.setText("启用工具栏");
         enabledBox.setTextSize(16f);
         enabledBox.setTextColor(color(R.color.text_main));
-        enabledBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                applyNow("启用开关");
-            }
-        });
         display.addView(enabledBox);
 
         edgeSlider = addSlider(display, "底部距离", "工具栏距键盘底部的高度",
@@ -111,54 +91,12 @@ public final class SettingsActivity extends Activity {
         buttonsBox.setTextSize(14f);
         buttonsBox.setTextColor(color(R.color.text_main));
         buttonsBox.setGravity(Gravity.TOP | Gravity.START);
-        buttonsBox.addTextChangedListener(new TextWatcher() {
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-            }
-
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-            }
-
-            public void afterTextChanged(Editable s) {
-                scheduleApply("按钮列表");
-            }
-        });
         buttons.addView(buttonsBox, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView help = hint(helpText());
         help.setPadding(0, dp(8), 0, 0);
         buttons.addView(help);
-
-        // ---------- ADB 命令 ----------
-        LinearLayout adb = card(root, "ADB 命令");
-        adb.addView(hint("跑一条 shell 命令，需要 root（没有 root 会按普通身份试一次）。"
-                + "想做成按钮，就在「按钮」里写：显示文字|adb|命令"));
-
-        adbBox = new EditText(this);
-        adbBox.setSingleLine(true);
-        adbBox.setHint("例如 input keyevent 4");
-        adbBox.setTextSize(14f);
-        adbBox.setTextColor(color(R.color.text_main));
-        adb.addView(adbBox, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        adb.addView(actionButton("执行命令", false, new View.OnClickListener() {
-            public void onClick(View v) {
-                runAdbCommand();
-            }
-        }));
-
-        adbOutput = new TextView(this);
-        adbOutput.setTextSize(12f);
-        adbOutput.setTypeface(Typeface.MONOSPACE);
-        adbOutput.setTextColor(color(R.color.text_main));
-        adbOutput.setBackground(roundRect(color(R.color.box_bg), dp(10)));
-        adbOutput.setPadding(dp(10), dp(10), dp(10), dp(10));
-        adbOutput.setText("（执行结果会显示在这里）");
-        LinearLayout.LayoutParams outParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        outParams.topMargin = dp(8);
-        adb.addView(adbOutput, outParams);
 
         // ---------- 运行日志 ----------
         LinearLayout logCard = card(root, "运行日志");
@@ -183,16 +121,21 @@ public final class SettingsActivity extends Activity {
             public void onClick(View v) {
                 RunLog.add("点击了设置页的「复制日志」");
                 boolean ok = RunLog.copyToClipboard(SettingsActivity.this);
-                logView.setText(RunLog.dump());
+                refreshLog();
                 toast(ok ? "日志已复制到剪贴板" : "复制失败");
             }
         }));
 
-        // ---------- 底部 ----------
-        root.addView(actionButton("恢复默认", true, new View.OnClickListener() {
+        // ---------- 底部按钮：手动保存 ----------
+        root.addView(actionButton("保存", true, new View.OnClickListener() {
+            public void onClick(View v) {
+                save("点击保存");
+            }
+        }));
+        root.addView(actionButton("恢复默认", false, new View.OnClickListener() {
             public void onClick(View v) {
                 loadDefaults();
-                applyNow("恢复默认");
+                save("恢复默认");
             }
         }));
 
@@ -228,19 +171,10 @@ public final class SettingsActivity extends Activity {
         load();
     }
 
-    @Override
-    protected void onStop() {
-        super.onStop();
-        applyNow("离开设置页");
-    }
-
-    // ---------- 自动保存 ----------
+    // ---------- 保存 ----------
 
     /** 把当前控件的值写进偏好，并广播给输入法进程 */
-    private void applyNow(String reason) {
-        if (loading) {
-            return;
-        }
+    private void save(String reason) {
         try {
             prefs.edit()
                     .putBoolean(BarConfig.KEY_ENABLED, enabledBox.isChecked())
@@ -254,6 +188,8 @@ public final class SettingsActivity extends Activity {
                     .apply();
         } catch (Throwable t) {
             RunLog.add("写入偏好失败(" + reason + "): " + t);
+            toast("保存失败，看运行日志");
+            refreshLog();
             return;
         }
 
@@ -267,25 +203,9 @@ public final class SettingsActivity extends Activity {
         } catch (Throwable t) {
             RunLog.add("广播失败: " + t);
         }
-        RunLog.add("已应用(" + reason + "): " + cfg.summary() + " 广播=" + sent);
+        RunLog.add("已保存(" + reason + "): " + cfg.summary() + " 广播=" + sent);
         refreshLog();
-    }
-
-    /** 文本框用：停手 0.6 秒后再保存，避免边打字边刷 */
-    private void scheduleApply(String reason) {
-        if (loading) {
-            return;
-        }
-        if (pendingTextApply != null) {
-            handler.removeCallbacks(pendingTextApply);
-        }
-        final String tag = reason;
-        pendingTextApply = new Runnable() {
-            public void run() {
-                applyNow(tag);
-            }
-        };
-        handler.postDelayed(pendingTextApply, 600);
+        toast(sent ? "已保存并生效" : "已保存（广播失败，重启输入法后生效）");
     }
 
     private void refreshLog() {
@@ -294,34 +214,9 @@ public final class SettingsActivity extends Activity {
         }
     }
 
-    // ---------- ADB 命令 ----------
-
-    private void runAdbCommand() {
-        final String command = adbBox.getText().toString().trim();
-        if (command.length() == 0) {
-            toast("先写一条命令");
-            return;
-        }
-        adbOutput.setText("执行中…\n" + command);
-        RunLog.add("（设置页）ADB 命令: " + command);
-        new Thread(new Runnable() {
-            public void run() {
-                final AdbCommand.Result result = AdbCommand.run(command);
-                RunLog.add("（设置页）ADB 结果: " + result.detail());
-                runOnUiThread(new Runnable() {
-                    public void run() {
-                        adbOutput.setText(result.detail());
-                        refreshLog();
-                    }
-                });
-            }
-        }, "imebar-adb-settings").start();
-    }
-
     // ---------- 读取 / 默认值 ----------
 
     private void load() {
-        loading = true;
         BarConfig cfg = BarConfig.fromPrefs(prefs);
         enabledBox.setChecked(cfg.enabled());
         edgeSlider.set(cfg.edgeDistanceDp());
@@ -333,11 +228,9 @@ public final class SettingsActivity extends Activity {
         buttonsBox.setText(cfg.buttonsRaw());
         RunLog.add("读取到已保存的配置: " + cfg.summary());
         refreshLog();
-        loading = false;
     }
 
     private void loadDefaults() {
-        loading = true;
         enabledBox.setChecked(true);
         edgeSlider.set(BarConfig.DEF_EDGE_DISTANCE);
         sideSlider.set(BarConfig.DEF_SIDE_MARGIN);
@@ -346,14 +239,13 @@ public final class SettingsActivity extends Activity {
         textColorBox.setText(BarConfig.DEF_TEXT_COLOR);
         barBgBox.setText(BarConfig.DEF_BAR_BG);
         buttonsBox.setText(BarConfig.DEFAULT_BUTTONS);
-        loading = false;
     }
 
     // ---------- 组件 ----------
 
     /**
-     * 一节内容 = 一张白色圆角卡片（18dp 圆角、16dp 内边距，卡片之间 12dp 间隙，左右各留 12dp）。
-     * 标题用黑字不加色——浅绿只留给对勾、数值条和按钮。
+     * 一节内容 = 一张白色圆角卡片（圆角 18dp、内边距 16dp、卡片之间 12dp 间隙）。
+     * 标题用比主色更深的绿 {@code green_deep}。
      */
     private LinearLayout card(LinearLayout parent, String title) {
         LinearLayout card = new LinearLayout(this);
@@ -369,7 +261,7 @@ public final class SettingsActivity extends Activity {
         TextView head = new TextView(this);
         head.setText(title);
         head.setTextSize(17f);
-        head.setTextColor(color(R.color.text_main));
+        head.setTextColor(color(R.color.green_deep));
         card.addView(head);
         parent.addView(card);
         return card;
@@ -425,7 +317,7 @@ public final class SettingsActivity extends Activity {
             }
 
             public void onStopTrackingTouch(SeekBar seekBar) {
-                applyNow("拖动滑块");   // 松手就保存并下发
+                // 手动保存：拖动只改数值，点「保存」才写进去
             }
         });
         slider.set(value);
@@ -471,17 +363,6 @@ public final class SettingsActivity extends Activity {
         edit.setTextSize(14f);
         edit.setTextColor(color(R.color.text_main));
         edit.setHint(def);
-        edit.addTextChangedListener(new TextWatcher() {
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-            }
-
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-            }
-
-            public void afterTextChanged(Editable s) {
-                scheduleApply("颜色");
-            }
-        });
         card.addView(edit, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return edit;
@@ -517,7 +398,7 @@ public final class SettingsActivity extends Activity {
                 + "app 打开某个 App（第三列写包名） / url 打开网址（第三列写链接）\n"
                 + "adb 执行 shell 命令（第三列写命令，需要 root） / log 复制输入法日志\n\n"
                 + "菜单按钮：第二列写 menu，第三列写 文字=动作，多项用 ; 分隔。\n"
-                + "所有滑块和开关都是改完自动保存、即时生效。";
+                + "改完点下面的「保存」生效。";
     }
 
     /** 一行滑动条：标题 + 说明 + 右侧数值 */

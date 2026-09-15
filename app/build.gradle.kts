@@ -47,6 +47,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // AGP 8 默认不再生成 BuildConfig，这里打开（日志里要用 BuildConfig.VERSION_NAME）
+    buildFeatures {
+        buildConfig = true
+    }
+
     lint {
         abortOnError = false
         checkReleaseBuilds = false

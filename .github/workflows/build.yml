@@ -53,7 +53,7 @@ jobs:
       - name: 编译 Debug APK
         run: gradle --no-daemon --stacktrace assembleDebug
 
-      - name: 编译 Release APK（用 debug 签名）
+      - name: 编译 Release APK
         run: gradle --no-daemon --stacktrace assembleRelease
 
       - name: 上传 APK

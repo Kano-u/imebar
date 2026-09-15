@@ -7,7 +7,12 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.drawable.GradientDrawable;
 import android.inputmethodservice.InputMethodService;
+import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -18,36 +23,43 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
 
 /**
- * 把工具栏画到输入法窗口里。
+ * 把工具栏画到输入法窗口里，并负责把设置页的值拿进来。
  *
  * 位置：默认贴在窗口【底部】，也就是键盘那排按键的下面。
  * 坐标系是"输入法窗口"本身：底部距离 = 距键盘底边的高度，左右边距 = 距窗口两侧的距离。
  *
- * 配置读取有两条路：
- *   1) 每次键盘弹出（onStartInputView / onWindowShown）都重新读一次快照 —— 保证设置一定生效；
- *   2) 设置页保存后会发一条广播，收到就立刻重读并重建 —— 不用切输入法，马上看到效果。
- * 之所以不能只读一次：libxposed 的远程偏好是内存快照，创建之后不会自己更新。
+ * 配置有三条来源，按可靠性排序：
+ *   1) **拉取**：每次弹出键盘，后台跨进程向模块 App 的 ConfigProvider 要一份当前配置
+ *      （App 进程刚写过的偏好在它自己内存里一定是最新的）——这条最可靠；
+ *   2) **推送**：设置页保存时把数值打包进广播发过来，收到立刻生效（不用等下次弹键盘）；
+ *   3) **兜底**：libxposed 的远程偏好快照（它不会自己刷新，只在进程刚启动时读一次）。
  */
 final class ImeBar {
 
     private static final String TAG = "ImeBar";
+    private static final String VERSION = "0.6.0";
     /** 按钮间距固定 8dp（原版没有这项设置，就不做成可调） */
     private static final int BUTTON_GAP_DP = 8;
+    /** 拉取配置的最小间隔，避免频繁跨进程调用 */
+    private static final long PULL_INTERVAL_MS = 1500;
 
     private static ConfigSource source;
     private static WeakReference<InputMethodService> lastService =
             new WeakReference<InputMethodService>(null);
+    /** 当前生效的配置 */
+    private static volatile BarConfig current;
     /** 记着上次挂上去的那条栏，配置变了就重建 */
     private static View lastBar;
     private static String lastSignature;
     private static boolean receiverRegistered;
-    /** 设置页刚刚通过广播推过来的配置（进程内优先用它，一定是最新的） */
-    private static volatile BarConfig pushed;
+    private static boolean firstAttachLogged;
+    private static long lastPullAt;
 
     private ImeBar() {
     }
@@ -56,7 +68,7 @@ final class ImeBar {
         source = configSource;
     }
 
-    /** 键盘弹出 / 窗口显示时调用：重新读配置并按需重建 */
+    /** 键盘弹出 / 窗口显示时调用 */
     static void attach(Object serviceObject) {
         if (!(serviceObject instanceof InputMethodService)) {
             return;
@@ -64,28 +76,113 @@ final class ImeBar {
         InputMethodService service = (InputMethodService) serviceObject;
         lastService = new WeakReference<InputMethodService>(service);
         registerConfigReceiver(service);
-        attach(service, readConfig());
+
+        BarConfig config = current;
+        if (config == null) {
+            config = sourceGet();
+            current = config;
+        }
+        render(service, config);
+
+        if (!firstAttachLogged) {
+            firstAttachLogged = true;
+            toast(service, "简易输入法工具栏 " + VERSION + " 已生效：距离 " + config.edgeDistanceDp()
+                    + "dp / 字号 " + config.textSizeSp() + "dp / 透明度 " + config.opacityPercent() + "%");
+        }
+        pullFromApp(service);
     }
 
-    /** 收到"设置已保存"广播后调用：立刻重读并重建 */
-    static void refresh() {
-        InputMethodService service = lastService.get();
-        if (service == null) {
+    // ---------- 配置来源 ----------
+
+    private static BarConfig sourceGet() {
+        ConfigSource configSource = source;
+        try {
+            return configSource != null ? configSource.get() : BarConfig.defaults();
+        } catch (Throwable t) {
+            Log.w(TAG, "读远程配置失败，用默认值", t);
+            return BarConfig.defaults();
+        }
+    }
+
+    /** 后台向模块 App 拉取最新配置（最可靠的一条路） */
+    private static void pullFromApp(final Context context) {
+        long now = SystemClock.uptimeMillis();
+        if (now - lastPullAt < PULL_INTERVAL_MS) {
             return;
         }
-        attach(service, readConfig());
+        lastPullAt = now;
+        new Thread(new Runnable() {
+            public void run() {
+                Bundle result = null;
+                try {
+                    result = context.getContentResolver().call(
+                            Uri.parse("content://" + ConfigProvider.AUTHORITY),
+                            ConfigProvider.METHOD_GET_CONFIG, null, null);
+                } catch (Throwable t) {
+                    Log.w(TAG, "拉取配置失败（模块 App 可能被强制停止）", t);
+                }
+                if (result == null) {
+                    return;
+                }
+                final BarConfig config = BarConfig.fromBundle(result);
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    public void run() {
+                        applyConfig(context, config, "拉取");
+                    }
+                });
+            }
+        }, "imebar-config-pull").start();
     }
 
-    private static BarConfig readConfig() {
-        BarConfig pushedConfig = pushed;
-        if (pushedConfig != null) {
-            return pushedConfig;
+    /**
+     * 让设置页的改动能立刻生效。
+     * 广播里带的是**配置的数值本身**，收到就直接用，不再去读远程偏好。
+     */
+    private static void registerConfigReceiver(Context context) {
+        if (receiverRegistered) {
+            return;
         }
-        ConfigSource current = source;
-        return current != null ? current.get() : BarConfig.defaults();
+        receiverRegistered = true;
+        try {
+            BroadcastReceiver receiver = new BroadcastReceiver() {
+                public void onReceive(Context ctx, Intent intent) {
+                    if (intent == null || !BarConfig.ACTION_CONFIG_CHANGED.equals(intent.getAction())) {
+                        return;
+                    }
+                    Log.i(TAG, "收到设置页推送");
+                    applyConfig(ctx, BarConfig.fromBundle(intent.getExtras()), "推送");
+                }
+            };
+            IntentFilter filter = new IntentFilter(BarConfig.ACTION_CONFIG_CHANGED);
+            int flags = Build.VERSION.SDK_INT >= 33 ? Context.RECEIVER_EXPORTED : 0;
+            context.registerReceiver(receiver, filter, null, null, flags);
+            Log.i(TAG, "已注册配置变更接收器");
+        } catch (Throwable t) {
+            Log.w(TAG, "注册配置变更接收器失败", t);
+        }
     }
 
-    private static void attach(InputMethodService service, BarConfig cfg) {
+    private static void applyConfig(Context context, BarConfig config, String how) {
+        BarConfig previous = current;
+        current = config;
+        InputMethodService service = lastService.get();
+        if (service != null) {
+            render(service, config);
+        }
+        boolean changed = previous == null || !previous.signature().equals(config.signature());
+        if (changed) {
+            Log.i(TAG, "配置已更新(" + how + ")：距离 " + config.edgeDistanceDp() + "dp, 边距 "
+                    + config.sideMarginDp() + "dp, 字号 " + config.textSizeSp() + "dp, 透明度 "
+                    + config.opacityPercent() + "%, 位置 " + (config.isBottom() ? "底部" : "顶部"));
+            toast(context, "设置已生效(" + how + ")：距离 " + config.edgeDistanceDp() + "dp / 字号 "
+                    + config.textSizeSp() + "dp / 透明度 " + config.opacityPercent() + "% / "
+                    + (config.isBottom() ? "底部" : "顶部"));
+        }
+    }
+
+    // ---------- 绘制 ----------
+
+    private static void render(InputMethodService service, BarConfig cfg) {
         try {
             if (!cfg.enabled()) {
                 removeBar();
@@ -144,42 +241,6 @@ final class ImeBar {
                     + ", 透明度=" + cfg.opacityPercent() + "%");
         } catch (Throwable t) {
             Log.e(TAG, "挂载工具栏失败", t);
-        }
-    }
-
-    /**
-     * 让设置页的改动能立刻生效。
-     *
-     * 关键点：广播里带的是**配置的数值本身**，收到就直接用，不再去读远程偏好
-     * （远程偏好是快照，LSPosed 侧还可能缓存对象，重读拿不到新值）。
-     */
-    private static void registerConfigReceiver(Context context) {
-        if (receiverRegistered) {
-            return;
-        }
-        receiverRegistered = true;
-        try {
-            BroadcastReceiver receiver = new BroadcastReceiver() {
-                public void onReceive(Context ctx, Intent intent) {
-                    if (intent == null || !BarConfig.ACTION_CONFIG_CHANGED.equals(intent.getAction())) {
-                        return;
-                    }
-                    BarConfig cfg = BarConfig.fromBundle(intent.getExtras());
-                    pushed = cfg;
-                    Log.i(TAG, "收到设置推送：底部距离=" + cfg.edgeDistanceDp() + "dp"
-                            + ", 左右边距=" + cfg.sideMarginDp() + "dp"
-                            + ", 字号=" + cfg.textSizeSp() + "dp"
-                            + ", 透明度=" + cfg.opacityPercent() + "%"
-                            + ", 位置=" + (cfg.isBottom() ? "底部" : "顶部"));
-                    refresh();
-                }
-            };
-            IntentFilter filter = new IntentFilter(BarConfig.ACTION_CONFIG_CHANGED);
-            int flags = Build.VERSION.SDK_INT >= 33 ? Context.RECEIVER_EXPORTED : 0;
-            context.registerReceiver(receiver, filter, null, null, flags);
-            Log.i(TAG, "已注册配置变更接收器");
-        } catch (Throwable t) {
-            Log.w(TAG, "注册配置变更接收器失败（改动仍会在下次弹出键盘时生效）", t);
         }
     }
 
@@ -286,5 +347,13 @@ final class ImeBar {
         drawable.setColor(color);
         drawable.setCornerRadius(radiusPx);
         return drawable;
+    }
+
+    /** 屏幕上可见的提示：方便不看日志也能判断哪一环生效了 */
+    private static void toast(Context context, String text) {
+        try {
+            Toast.makeText(context, text, Toast.LENGTH_LONG).show();
+        } catch (Throwable ignored) {
+        }
     }
 }

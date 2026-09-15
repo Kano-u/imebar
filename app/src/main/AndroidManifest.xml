@@ -32,5 +32,12 @@
             android:name="io.github.libxposed.service.XposedProvider"
             android:authorities="${applicationId}.XposedService"
             android:exported="true" />
+
+        <!-- 输入法进程靠它跨进程拉取当前配置（每次弹出键盘都会问一次，保证拿到最新值） -->
+        <provider
+            android:name=".ConfigProvider"
+            android:authorities="com.local.imebar.config"
+            android:exported="true"
+            android:grantUriPermissions="false" />
     </application>
 </manifest>

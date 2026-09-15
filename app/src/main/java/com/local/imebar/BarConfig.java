@@ -10,13 +10,15 @@ import java.util.List;
 /**
  * 模块配置：一个不可变的值对象。
  *
- * 它有两种来源，都要产出同样的字段：
+ * 两个来源，产出的字段完全一样：
  *   1) fromPrefs()  —— 模块 App 自己的 SharedPreferences("config")；
- *   2) fromBundle() —— 设置页保存后通过广播直接推送给输入法进程的数值。
+ *   2) fromBundle() —— 设置页保存后，把数值本身推给输入法进程的广播。
  *
- * 为什么要有 (2)：输入法进程里读到的"远程偏好"（libxposed getRemotePreferences）
- * 是内存快照，LSPosed 侧还可能缓存这个对象，改了设置重读也拿不到新值。
- * 所以改设置时干脆把数值本身放进广播送过去，输入法收到就直接用，不再依赖读取。
+ * 为什么非要 (2)：libxposed 的"远程偏好"是内存快照（只在创建时取一次），
+ * 改了设置重读也拿不到新值；而广播里带的是**数值本身**，收到就能直接用。
+ *
+ * 位置固定键盘底部、按钮固定纯文字、排列固定均分铺满——都不做成可选项，
+ * 所以这里没有这几项字段，也就没有对应的分支。
  */
 public final class BarConfig {
 
@@ -28,72 +30,60 @@ public final class BarConfig {
 
     // 显示
     public static final String KEY_ENABLED = "bar_enabled";
-    public static final String KEY_POSITION = "bar_position";          // bottom | top
     public static final String KEY_EDGE_DISTANCE = "edge_distance_dp";
     public static final String KEY_SIDE_MARGIN = "side_margin_dp";
     public static final String KEY_TEXT_SIZE = "text_size_sp";
     public static final String KEY_OPACITY = "opacity_percent";
 
-    // 样式
-    public static final String KEY_STYLE = "button_style";             // text | pill
-    public static final String KEY_LAYOUT = "button_layout";           // stretch | left
+    // 配色
     public static final String KEY_TEXT_COLOR = "text_color";
-    public static final String KEY_PILL_BG = "pill_bg_color";
     public static final String KEY_BAR_BG = "bar_bg_color";
 
     // 按钮
     public static final String KEY_BUTTONS = "buttons";
 
-    public static final String POSITION_BOTTOM = "bottom";
-    public static final String POSITION_TOP = "top";
-    public static final String STYLE_TEXT = "text";
-    public static final String STYLE_PILL = "pill";
-    public static final String LAYOUT_STRETCH = "stretch";
-    public static final String LAYOUT_LEFT = "left";
-
     public static final int DEF_EDGE_DISTANCE = 0;
     public static final int DEF_SIDE_MARGIN = 50;
-    public static final int DEF_TEXT_SIZE = 15;
-    public static final int DEF_OPACITY = 80;
+    public static final int DEF_TEXT_SIZE = 10;
+    public static final int DEF_OPACITY = 65;
+
+    /** 文字大小可调范围（下限 5dp） */
+    public static final int MIN_TEXT_SIZE = 5;
+    public static final int MAX_TEXT_SIZE = 24;
 
     public static final String DEF_TEXT_COLOR = "#202124";
-    public static final String DEF_PILL_BG = "#F2F3F5";
     public static final String DEF_BAR_BG = "#00000000";
 
+    /**
+     * 默认按钮：一行一个 `显示文字|动作|参数`。
+     * 以 # 开头的行是注释、会被忽略（最后那行是 ADB 命令的写法示例，要用的时候去掉 # 即可）。
+     */
     public static final String DEFAULT_BUTTONS =
             "复制|copy\n"
                     + "粘贴|paste\n"
                     + "全选|select_all\n"
                     + "收起键盘|hide\n"
-                    + "更多|menu|切输入法=switch_ime;插入日期=insert_date;插入时间=insert_time;打开设置=settings;复制日志=log";
+                    + "复制日志|log\n"
+                    + "# 截屏|adb|screencap -p /sdcard/imebar.png";
 
     private final boolean enabled;
-    private final boolean bottom;
     private final int edgeDistance;
     private final int sideMargin;
     private final int textSize;
     private final int opacity;
-    private final boolean pill;
-    private final boolean stretch;
     private final String textColorHex;
-    private final String pillColorHex;
     private final String barBackgroundHex;
     private final String buttonsRaw;
     private final List<Button> buttons;
 
-    private BarConfig(boolean enabled, boolean bottom, int edgeDistance, int sideMargin, int textSize,
-                      int opacity, boolean pill, boolean stretch, String textColorHex,
-                      String pillColorHex, String barBackgroundHex, String buttonsRaw) {
+    private BarConfig(boolean enabled, int edgeDistance, int sideMargin, int textSize, int opacity,
+                      String textColorHex, String barBackgroundHex, String buttonsRaw) {
         this.enabled = enabled;
-        this.bottom = bottom;
         this.edgeDistance = clamp(edgeDistance, 0, 60);
         this.sideMargin = clamp(sideMargin, 0, 60);
-        this.textSize = clamp(textSize, 10, 24);
+        this.textSize = clamp(textSize, MIN_TEXT_SIZE, MAX_TEXT_SIZE);
         this.opacity = clamp(opacity, 20, 100);
-        this.pill = pill;
-        this.stretch = stretch;
         this.textColorHex = safe(textColorHex, DEF_TEXT_COLOR);
-        this.pillColorHex = safe(pillColorHex, DEF_PILL_BG);
         this.barBackgroundHex = safe(barBackgroundHex, DEF_BAR_BG);
         this.buttonsRaw = (buttonsRaw == null || buttonsRaw.trim().length() == 0)
                 ? DEFAULT_BUTTONS : buttonsRaw;
@@ -108,16 +98,11 @@ public final class BarConfig {
         }
         return new BarConfig(
                 getBoolean(prefs, KEY_ENABLED, true),
-                // 位置/按钮样式/排列方式固定为：键盘底部、纯文字、均分铺满（不做成可选项）
-                true,
                 getInt(prefs, KEY_EDGE_DISTANCE, DEF_EDGE_DISTANCE),
                 getInt(prefs, KEY_SIDE_MARGIN, DEF_SIDE_MARGIN),
                 getInt(prefs, KEY_TEXT_SIZE, DEF_TEXT_SIZE),
                 getInt(prefs, KEY_OPACITY, DEF_OPACITY),
-                false,
-                true,
                 getString(prefs, KEY_TEXT_COLOR, DEF_TEXT_COLOR),
-                getString(prefs, KEY_PILL_BG, DEF_PILL_BG),
                 getString(prefs, KEY_BAR_BG, DEF_BAR_BG),
                 getString(prefs, KEY_BUTTONS, DEFAULT_BUTTONS));
     }
@@ -128,15 +113,11 @@ public final class BarConfig {
         }
         return new BarConfig(
                 bundle.getBoolean(KEY_ENABLED, true),
-                true,
                 bundle.getInt(KEY_EDGE_DISTANCE, DEF_EDGE_DISTANCE),
                 bundle.getInt(KEY_SIDE_MARGIN, DEF_SIDE_MARGIN),
                 bundle.getInt(KEY_TEXT_SIZE, DEF_TEXT_SIZE),
                 bundle.getInt(KEY_OPACITY, DEF_OPACITY),
-                false,
-                true,
                 bundle.getString(KEY_TEXT_COLOR, DEF_TEXT_COLOR),
-                bundle.getString(KEY_PILL_BG, DEF_PILL_BG),
                 bundle.getString(KEY_BAR_BG, DEF_BAR_BG),
                 bundle.getString(KEY_BUTTONS, DEFAULT_BUTTONS));
     }
@@ -144,23 +125,19 @@ public final class BarConfig {
     public Bundle toBundle() {
         Bundle bundle = new Bundle();
         bundle.putBoolean(KEY_ENABLED, enabled);
-        bundle.putString(KEY_POSITION, bottom ? POSITION_BOTTOM : POSITION_TOP);
         bundle.putInt(KEY_EDGE_DISTANCE, edgeDistance);
         bundle.putInt(KEY_SIDE_MARGIN, sideMargin);
         bundle.putInt(KEY_TEXT_SIZE, textSize);
         bundle.putInt(KEY_OPACITY, opacity);
-        bundle.putString(KEY_STYLE, pill ? STYLE_PILL : STYLE_TEXT);
-        bundle.putString(KEY_LAYOUT, stretch ? LAYOUT_STRETCH : LAYOUT_LEFT);
         bundle.putString(KEY_TEXT_COLOR, textColorHex);
-        bundle.putString(KEY_PILL_BG, pillColorHex);
         bundle.putString(KEY_BAR_BG, barBackgroundHex);
         bundle.putString(KEY_BUTTONS, buttonsRaw);
         return bundle;
     }
 
     public static BarConfig defaults() {
-        return new BarConfig(true, true, DEF_EDGE_DISTANCE, DEF_SIDE_MARGIN, DEF_TEXT_SIZE,
-                DEF_OPACITY, false, true, DEF_TEXT_COLOR, DEF_PILL_BG, DEF_BAR_BG, DEFAULT_BUTTONS);
+        return new BarConfig(true, DEF_EDGE_DISTANCE, DEF_SIDE_MARGIN, DEF_TEXT_SIZE,
+                DEF_OPACITY, DEF_TEXT_COLOR, DEF_BAR_BG, DEFAULT_BUTTONS);
     }
 
     // ---------- 取值 ----------
@@ -169,11 +146,7 @@ public final class BarConfig {
         return enabled;
     }
 
-    public boolean isBottom() {
-        return bottom;
-    }
-
-    /** 工具栏距键盘那一条边缘的高度（位置=底部时是底边，位置=顶部时是顶边） */
+    /** 工具栏距键盘底边的高度 */
     public int edgeDistanceDp() {
         return edgeDistance;
     }
@@ -190,20 +163,8 @@ public final class BarConfig {
         return opacity;
     }
 
-    public boolean isPill() {
-        return pill;
-    }
-
-    public boolean isStretch() {
-        return stretch;
-    }
-
     public String textColorHex() {
         return textColorHex;
-    }
-
-    public String pillColorHex() {
-        return pillColorHex;
     }
 
     public String barBackgroundHex() {
@@ -212,10 +173,6 @@ public final class BarConfig {
 
     public int textColor() {
         return parseColor(textColorHex, 0xFF202124);
-    }
-
-    public int pillColor() {
-        return parseColor(pillColorHex, 0xFFF2F3F5);
     }
 
     public int barBackgroundColor() {
@@ -232,22 +189,20 @@ public final class BarConfig {
 
     /** 用来判断配置有没有变，变了就重建工具栏 */
     public String signature() {
-        return enabled + "|" + bottom + "|" + edgeDistance + "|" + sideMargin + "|" + textSize
-                + "|" + opacity + "|" + pill + "|" + stretch + "|" + textColorHex + "|"
-                + pillColorHex + "|" + barBackgroundHex + "|" + buttonsRaw;
+        return enabled + "|" + edgeDistance + "|" + sideMargin + "|" + textSize
+                + "|" + opacity + "|" + textColorHex + "|" + barBackgroundHex + "|" + buttonsRaw;
     }
 
     /** 一行摘要，写日志用 */
     public String summary() {
-        return "距离" + edgeDistance + " 边距" + sideMargin + " 字号" + textSize + " 透明度" + opacity
-                + " " + (bottom ? "底部" : "顶部") + " " + (pill ? "胶囊" : "文字")
-                + " " + (stretch ? "均分" : "左对齐") + " 按钮=[" + buttonsRaw.replace('\n', '/') + "]";
+        return "距离" + edgeDistance + " 边距" + sideMargin + " 字号" + textSize
+                + " 透明度" + opacity + " 按钮=[" + buttonsRaw.replace('\n', '/') + "]";
     }
 
     // ---------- 解析 ----------
 
     private static List<Button> parseButtons(String raw) {
-        List<Button> list = new ArrayList<>();
+        List<Button> list = new ArrayList<Button>();
         for (String line : raw.split("\n")) {
             if (line == null) {
                 continue;
@@ -267,16 +222,14 @@ public final class BarConfig {
                 continue;
             }
             List<Item> items = "menu".equals(action) ? parseMenu(arg) : null;
-            if (items != null && items.isEmpty()) {
-                continue;
-            }
             list.add(new Button(label, action, arg, items));
         }
         return list;
     }
 
+    /** 菜单按钮的第三列：`文字=动作`，多项用 ; 分隔 */
     private static List<Item> parseMenu(String raw) {
-        List<Item> items = new ArrayList<>();
+        List<Item> items = new ArrayList<Item>();
         if (raw == null) {
             return items;
         }
@@ -295,7 +248,7 @@ public final class BarConfig {
             if (label.length() == 0) {
                 label = action;
             }
-            if (label.length() == 0 && action.length() == 0) {
+            if (label.length() == 0) {
                 continue;
             }
             items.add(new Item(label, action, arg));
@@ -355,7 +308,7 @@ public final class BarConfig {
         public final String label;
         public final String action;
         public final String arg;
-        /** 只有当 action 是 "menu" 时非空 */
+        /** 只有 action 是 "menu" 时非空 */
         public final List<Item> menuItems;
 
         Button(String label, String action, String arg, List<Item> menuItems) {

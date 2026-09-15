@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 界面统一浅绿：设置页、控件高亮都用这里的颜色，别在代码里散落色值 -->
+<resources>
+    <color name="page_bg">#FFE8F5E9</color>
+    <color name="card_bg">#FFFFFFFF</color>
+    <color name="green_accent">#FF66BB6A</color>
+    <color name="green_soft">#FFC8E6C9</color>
+    <color name="green_ripple">#3366BB6A</color>
+    <color name="text_main">#FF1A1A1A</color>
+    <color name="text_hint">#FF8A8A8E</color>
+</resources>

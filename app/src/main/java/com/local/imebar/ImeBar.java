@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.drawable.GradientDrawable;
 import android.inputmethodservice.InputMethodService;
 import android.net.Uri;
 import android.os.Build;
@@ -20,7 +19,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -31,8 +29,8 @@ import java.util.List;
 /**
  * 把工具栏画到输入法窗口里，并负责把设置页的值拿进来。
  *
- * 位置：默认贴在窗口【底部】，也就是键盘那排按键的下面。
- * 坐标系是"输入法窗口"本身：底部距离 = 距键盘底边的高度，左右边距 = 距窗口两侧的距离。
+ * 形态固定：贴在键盘最底部、纯文字按钮、等宽铺满（都不做可选项）。
+ * 坐标系就是"输入法窗口"本身：底部距离 = 距键盘底边的高度，左右边距 = 距窗口两侧的距离。
  *
  * 配置有三条来源，按可靠性排序：
  *   1) **拉取**：每次弹出键盘，后台跨进程向模块 App 的 ConfigProvider 要一份当前配置
@@ -43,8 +41,8 @@ import java.util.List;
 final class ImeBar {
 
     private static final String TAG = "ImeBar";
-    private static final String VERSION = "0.9.1";
-    /** 按钮间距固定 8dp（原版没有这项设置，就不做成可调） */
+    private static final String VERSION = "0.10.0";
+    /** 按钮间距固定 8dp */
     private static final int BUTTON_GAP_DP = 8;
     /** 拉取配置的最小间隔，避免频繁跨进程调用 */
     private static final long PULL_INTERVAL_MS = 1500;
@@ -180,15 +178,15 @@ final class ImeBar {
             render(service, config);
         }
         boolean changed = previous == null || !previous.signature().equals(config.signature());
-        if (changed) {
-            RunLog.add("配置更新(" + how + "): " + config.summary());
-            Log.i(TAG, "配置已更新(" + how + ")：距离 " + config.edgeDistanceDp() + "dp, 边距 "
-                    + config.sideMarginDp() + "dp, 字号 " + config.textSizeSp() + "dp, 透明度 "
-                    + config.opacityPercent() + "%, 位置 " + (config.isBottom() ? "底部" : "顶部"));
-            toast(context, "设置已生效(" + how + ")：距离 " + config.edgeDistanceDp() + "dp / 字号 "
-                    + config.textSizeSp() + "dp / 透明度 " + config.opacityPercent() + "% / "
-                    + (config.isBottom() ? "底部" : "顶部"));
+        if (!changed) {
+            return;
         }
+        RunLog.add("配置更新(" + how + "): " + config.summary());
+        Log.i(TAG, "配置已更新(" + how + ")：距离 " + config.edgeDistanceDp() + "dp, 边距 "
+                + config.sideMarginDp() + "dp, 字号 " + config.textSizeSp() + "dp, 透明度 "
+                + config.opacityPercent() + "%");
+        toast(context, "设置已生效(" + how + ")：距离 " + config.edgeDistanceDp() + "dp / 字号 "
+                + config.textSizeSp() + "dp / 透明度 " + config.opacityPercent() + "%");
     }
 
     // ---------- 绘制 ----------
@@ -232,21 +230,14 @@ final class ImeBar {
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT);
-            int edge = (int) (cfg.edgeDistanceDp() * density + 0.5f);
-            if (cfg.isBottom()) {
-                lp.gravity = Gravity.BOTTOM;
-                lp.bottomMargin = edge;
-            } else {
-                lp.gravity = Gravity.TOP;
-                lp.topMargin = edge;
-            }
+            lp.gravity = Gravity.BOTTOM;
+            lp.bottomMargin = (int) (cfg.edgeDistanceDp() * density + 0.5f);
 
             root.addView(bar, lp);
             lastBar = bar;
             lastSignature = signature;
             RunLog.add("重建工具栏: " + cfg.summary());
-            Log.i(TAG, "工具栏已挂载(" + (cfg.isBottom() ? "键盘底部" : "键盘顶部")
-                    + "), 按钮数=" + cfg.buttons().size()
+            Log.i(TAG, "工具栏已挂载(键盘底部), 按钮数=" + cfg.buttons().size()
                     + ", 底部距离=" + cfg.edgeDistanceDp() + "dp"
                     + ", 左右边距=" + cfg.sideMarginDp() + "dp"
                     + ", 字号=" + cfg.textSizeSp() + "dp"
@@ -280,16 +271,16 @@ final class ImeBar {
         float textPx = cfg.textSizeSp() * density;
         int gap = (int) (BUTTON_GAP_DP * density + 0.5f);
         int sidePad = (int) (cfg.sideMarginDp() * density + 0.5f);
-        int vPad = (int) ((cfg.isPill() ? 6 : 8) * density + 0.5f);
-        int hPad = (int) ((cfg.isPill() ? 12 : 6) * density + 0.5f);
+        int vPad = (int) (8 * density + 0.5f);
+        int hPad = (int) (6 * density + 0.5f);
 
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(sidePad, vPad, sidePad, vPad);
+        row.setBackgroundColor(cfg.barBackgroundColor());
 
         List<BarConfig.Button> buttons = cfg.buttons();
-        boolean stretch = cfg.isStretch();
-
         for (int i = 0; i < buttons.size(); i++) {
             final BarConfig.Button button = buttons.get(i);
 
@@ -301,10 +292,6 @@ final class ImeBar {
             item.setSingleLine(true);
             item.setIncludeFontPadding(false);
             item.setPadding(hPad, vPad, hPad, vPad);
-            if (cfg.isPill()) {
-                item.setBackground(pillBackground(cfg.pillColor(),
-                        (textPx + 2 * (float) vPad) / 2f));
-            }
             item.setClickable(true);
             item.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
@@ -315,7 +302,7 @@ final class ImeBar {
                         }
                     } else {
                         // 丢到下一轮消息循环再执行：在触摸事件里直接 startActivity，
-                        // 个别 ROM 会把这次启动忽略掉（原版 AI超级工具栏 也是这么写的）。
+                        // 个别 ROM 会把这次启动忽略掉。
                         v.post(new Runnable() {
                             public void run() {
                                 BarActions.run(service, button.action, button.arg);
@@ -325,46 +312,14 @@ final class ImeBar {
                 }
             });
 
-            LinearLayout.LayoutParams lp;
-            if (stretch) {
-                // 均分铺满：每个按钮等宽，像 AI超级工具栏 那样横向排开
-                lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-                lp.setMargins(gap / 2, 0, gap / 2, 0);
-            } else {
-                lp = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-                if (i < buttons.size() - 1) {
-                    lp.rightMargin = gap;
-                }
-            }
+            // 均分铺满：每个按钮等宽
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMargins(gap / 2, 0, gap / 2, 0);
             item.setLayoutParams(lp);
             row.addView(item);
         }
-
-        View bar;
-        if (stretch) {
-            row.setPadding(sidePad, vPad, sidePad, vPad);
-            bar = row;
-        } else {
-            HorizontalScrollView scroll = new HorizontalScrollView(context);
-            scroll.setHorizontalScrollBarEnabled(false);
-            scroll.setPadding(sidePad, vPad, sidePad, vPad);
-            scroll.addView(row, new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT));
-            bar = scroll;
-        }
-        bar.setBackgroundColor(cfg.barBackgroundColor());
-        return bar;
-    }
-
-    /** 胶囊背景：圆角取高度的一半，得到全圆角 */
-    private static GradientDrawable pillBackground(int color, float radiusPx) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setColor(color);
-        drawable.setCornerRadius(radiusPx);
-        return drawable;
+        return row;
     }
 
     /** 屏幕上可见的提示：方便不看日志也能判断哪一环生效了 */
@@ -374,5 +329,4 @@ final class ImeBar {
         } catch (Throwable ignored) {
         }
     }
-
 }

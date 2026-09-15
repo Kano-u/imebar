@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -14,6 +15,7 @@ import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
@@ -23,19 +25,14 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
-
 /**
- * 设置页。
- *
- * 关键行为：**改动即自动保存并即时下发**（跟 AI超级工具栏 一样，它的说明文字就是
- * "所有滑块/开关改完自动保存、即时生效"）。不需要点保存：
+ * 设置页。改动即自动保存并即时下发，不需要点保存：
  *   - 滑块：松手时保存
- *   - 开关/单选：改变时保存
- *   - 文本框（颜色/按钮）：停止输入 0.6 秒后保存；离开页面时也保存一次
+ *   - 开关：改变时保存
+ *   - 文本框（颜色 / 按钮）：停止输入 0.6 秒后保存；离开页面时再补一次
  * 每次保存都会写偏好 + 广播配置数值给输入法进程。
+ *
+ * 配色统一走资源里的浅绿（见 res/values/colors.xml），不在这里散落颜色常量。
  */
 public final class SettingsActivity extends Activity {
 
@@ -52,41 +49,36 @@ public final class SettingsActivity extends Activity {
     private Slider textSizeSlider;
     private Slider opacitySlider;
     private EditText textColorBox;
-    private EditText pillColorBox;
     private EditText barBgBox;
     private EditText buttonsBox;
-    private TextView statusView;
+    private EditText adbBox;
+    private TextView adbOutput;
     private TextView logView;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(BarConfig.GROUP, MODE_PRIVATE);
-        // 记一笔"设置页起来了"：输入法进程发完 startActivity 会回查这个时间戳，
-        // 用来区分"打不开"和"系统把这次启动拦掉了"。
-        prefs.edit()
-                .putLong(ConfigProvider.KEY_SETTINGS_OPENED_AT, System.currentTimeMillis())
-                .apply();
         RunLog.add("打开设置页（模块 App 进程）");
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xFFF2F2F7);
         int pad = dp(12);
-        root.setPadding(pad, pad, pad, dp(28));
+        root.setPadding(pad, dp(8), pad, dp(24));
+
+        TextView title = new TextView(this);
+        title.setText(R.string.app_name);
+        title.setTextSize(20f);
+        title.setTextColor(color(R.color.green_accent));
+        title.setPadding(dp(6), dp(6), 0, dp(10));
+        root.addView(title);
 
         // ---------- 显示设置 ----------
         LinearLayout display = card(root, "显示设置");
-
-        statusView = new TextView(this);
-        statusView.setTextSize(12f);
-        statusView.setTextColor(0xFF0F7B6C);
-        display.addView(statusView);
-
         enabledBox = new CheckBox(this);
         enabledBox.setText("启用工具栏");
         enabledBox.setTextSize(16f);
-        enabledBox.setTextColor(0xFF1A1A1A);
+        enabledBox.setTextColor(color(R.color.text_main));
         enabledBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 applyNow("启用开关");
@@ -99,33 +91,24 @@ public final class SettingsActivity extends Activity {
         sideSlider = addSlider(display, "左右边距", "工具栏两侧与屏幕边缘的距离",
                 0, 60, BarConfig.DEF_SIDE_MARGIN, " dp");
         textSizeSlider = addSlider(display, "文字大小", "文字按钮的字号大小",
-                10, 24, BarConfig.DEF_TEXT_SIZE, " dp");
+                BarConfig.MIN_TEXT_SIZE, BarConfig.MAX_TEXT_SIZE, BarConfig.DEF_TEXT_SIZE, " dp");
         opacitySlider = addSlider(display, "显示透明度", "工具栏整体显示透明度",
                 20, 100, BarConfig.DEF_OPACITY, " %");
 
         // ---------- 配色 ----------
         LinearLayout style = card(root, "配色");
-        TextView styleTip = new TextView(this);
-        styleTip.setText("位置固定为「键盘底部」、按钮固定为「纯文字」、排列固定为「均分铺满」，不需要选择。");
-        styleTip.setTextSize(12f);
-        styleTip.setTextColor(0xFF8A8A8E);
-        style.addView(styleTip);
         textColorBox = addColor(style, "文字颜色", BarConfig.DEF_TEXT_COLOR);
-        pillColorBox = addColor(style, "胶囊底色", BarConfig.DEF_PILL_BG);
         barBgBox = addColor(style, "整条栏背景色", BarConfig.DEF_BAR_BG);
 
         // ---------- 按钮 ----------
         LinearLayout buttons = card(root, "按钮");
-        TextView tip = new TextView(this);
-        tip.setText("一行一个：显示文字|动作|参数（改完停一下会自动保存）");
-        tip.setTextSize(13f);
-        tip.setTextColor(0xFF8A8A8E);
-        buttons.addView(tip);
+        buttons.addView(hint("一行一个：显示文字|动作|参数。以 # 开头的行是注释，会被忽略。"));
 
         buttonsBox = new EditText(this);
         buttonsBox.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         buttonsBox.setMinLines(6);
         buttonsBox.setTextSize(14f);
+        buttonsBox.setTextColor(color(R.color.text_main));
         buttonsBox.setGravity(Gravity.TOP | Gravity.START);
         buttonsBox.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -141,33 +124,57 @@ public final class SettingsActivity extends Activity {
         buttons.addView(buttonsBox, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView help = new TextView(this);
-        help.setText(helpText());
-        help.setTextSize(12f);
-        help.setTextColor(0xFF8A8A8E);
+        TextView help = hint(helpText());
         help.setPadding(0, dp(8), 0, 0);
         buttons.addView(help);
 
+        // ---------- ADB 命令 ----------
+        LinearLayout adb = card(root, "ADB 命令");
+        adb.addView(hint("跑一条 shell 命令，需要 root（没有 root 会按普通身份试一次）。"
+                + "想做成按钮，就在「按钮」里写：显示文字|adb|命令"));
+
+        adbBox = new EditText(this);
+        adbBox.setSingleLine(true);
+        adbBox.setHint("例如 input keyevent 4");
+        adbBox.setTextSize(14f);
+        adbBox.setTextColor(color(R.color.text_main));
+        adb.addView(adbBox, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        adb.addView(actionButton("执行命令", false, new View.OnClickListener() {
+            public void onClick(View v) {
+                runAdbCommand();
+            }
+        }));
+
+        adbOutput = new TextView(this);
+        adbOutput.setTextSize(12f);
+        adbOutput.setTypeface(Typeface.MONOSPACE);
+        adbOutput.setTextColor(color(R.color.text_main));
+        adbOutput.setBackground(roundRect(color(R.color.green_soft), dp(10)));
+        adbOutput.setPadding(dp(10), dp(10), dp(10), dp(10));
+        adbOutput.setText("（执行结果会显示在这里）");
+        LinearLayout.LayoutParams outParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        outParams.topMargin = dp(8);
+        adb.addView(adbOutput, outParams);
+
         // ---------- 运行日志 ----------
         LinearLayout logCard = card(root, "运行日志");
-        TextView logTip = new TextView(this);
-        logTip.setText("这里显示模块 App 进程的日志。输入法进程的日志请用工具栏上的"
-                + "「更多 → 复制日志」按钮取；两边都发我最容易定位问题。");
-        logTip.setTextSize(12f);
-        logTip.setTextColor(0xFF8A8A8E);
-        logCard.addView(logTip);
+        logCard.addView(hint("这里显示模块 App 进程的日志；输入法进程的日志用工具栏上的"
+                + "「更多 → 复制日志」取。"));
 
         logView = new TextView(this);
         logView.setTextSize(11f);
         logView.setTypeface(Typeface.MONOSPACE);
-        logView.setTextColor(0xFF1A1A1A);
-        logView.setBackground(roundRect(0xFFF5F5F7, dp(10)));
+        logView.setTextColor(color(R.color.text_main));
+        logView.setBackground(roundRect(color(R.color.green_soft), dp(10)));
         logView.setPadding(dp(10), dp(10), dp(10), dp(10));
         logView.setText(RunLog.dump());
         ScrollView logScroll = new ScrollView(this);
         logScroll.addView(logView);
         LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(220));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(200));
         logParams.topMargin = dp(8);
         logCard.addView(logScroll, logParams);
 
@@ -176,35 +183,45 @@ public final class SettingsActivity extends Activity {
                 RunLog.add("点击了设置页的「复制日志」");
                 boolean ok = RunLog.copyToClipboard(SettingsActivity.this);
                 logView.setText(RunLog.dump());
-                Toast.makeText(SettingsActivity.this, ok ? "日志已复制到剪贴板" : "复制失败",
-                        Toast.LENGTH_SHORT).show();
+                toast(ok ? "日志已复制到剪贴板" : "复制失败");
             }
         }));
 
-        // ---------- 底部按钮（改动已自动保存，这两个只是兜底） ----------
-        root.addView(actionButton("立即应用（改动已自动保存，一般不用点）", true,
-                new View.OnClickListener() {
-                    public void onClick(View v) {
-                        applyNow("点击立即应用");
-                    }
-                }));
-        root.addView(actionButton("恢复默认", false, new View.OnClickListener() {
+        // ---------- 底部 ----------
+        root.addView(actionButton("恢复默认", true, new View.OnClickListener() {
             public void onClick(View v) {
                 loadDefaults();
                 applyNow("恢复默认");
             }
         }));
 
-        TextView footer = new TextView(this);
-        footer.setText("本模块没有联网权限、没有存储权限、不会执行 shell。");
-        footer.setTextSize(12f);
-        footer.setTextColor(0xFF8A8A8E);
-        footer.setPadding(0, dp(12), 0, 0);
-        root.addView(footer);
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(0xFFF2F2F7);
+        final ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(color(R.color.page_bg));
         scroll.addView(root);
+        // Android 15（targetSdk 35）默认边到边：不加这段，最上面的字会被状态栏盖住
+        scroll.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            public WindowInsets onApplyWindowInsets(View view, WindowInsets insets) {
+                int left;
+                int top;
+                int right;
+                int bottom;
+                if (Build.VERSION.SDK_INT >= 30) {
+                    android.graphics.Insets bars = insets.getInsets(
+                            WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                    left = bars.left;
+                    top = bars.top;
+                    right = bars.right;
+                    bottom = bars.bottom;
+                } else {
+                    left = insets.getSystemWindowInsetLeft();
+                    top = insets.getSystemWindowInsetTop();
+                    right = insets.getSystemWindowInsetRight();
+                    bottom = insets.getSystemWindowInsetBottom();
+                }
+                view.setPadding(left, top, right, bottom);
+                return insets;
+            }
+        });
         setContentView(scroll);
 
         load();
@@ -231,7 +248,6 @@ public final class SettingsActivity extends Activity {
                     .putInt(BarConfig.KEY_TEXT_SIZE, textSizeSlider.value())
                     .putInt(BarConfig.KEY_OPACITY, opacitySlider.value())
                     .putString(BarConfig.KEY_TEXT_COLOR, textColorBox.getText().toString().trim())
-                    .putString(BarConfig.KEY_PILL_BG, pillColorBox.getText().toString().trim())
                     .putString(BarConfig.KEY_BAR_BG, barBgBox.getText().toString().trim())
                     .putString(BarConfig.KEY_BUTTONS, buttonsBox.getText().toString())
                     .apply();
@@ -251,10 +267,7 @@ public final class SettingsActivity extends Activity {
             RunLog.add("广播失败: " + t);
         }
         RunLog.add("已应用(" + reason + "): " + cfg.summary() + " 广播=" + sent);
-        updateStatus(cfg);
-        if (logView != null) {
-            logView.setText(RunLog.dump());
-        }
+        refreshLog();
     }
 
     /** 文本框用：停手 0.6 秒后再保存，避免边打字边刷 */
@@ -274,6 +287,36 @@ public final class SettingsActivity extends Activity {
         handler.postDelayed(pendingTextApply, 600);
     }
 
+    private void refreshLog() {
+        if (logView != null) {
+            logView.setText(RunLog.dump());
+        }
+    }
+
+    // ---------- ADB 命令 ----------
+
+    private void runAdbCommand() {
+        final String command = adbBox.getText().toString().trim();
+        if (command.length() == 0) {
+            toast("先写一条命令");
+            return;
+        }
+        adbOutput.setText("执行中…\n" + command);
+        RunLog.add("（设置页）ADB 命令: " + command);
+        new Thread(new Runnable() {
+            public void run() {
+                final AdbCommand.Result result = AdbCommand.run(command);
+                RunLog.add("（设置页）ADB 结果: " + result.detail());
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        adbOutput.setText(result.detail());
+                        refreshLog();
+                    }
+                });
+            }
+        }, "imebar-adb-settings").start();
+    }
+
     // ---------- 读取 / 默认值 ----------
 
     private void load() {
@@ -285,14 +328,10 @@ public final class SettingsActivity extends Activity {
         textSizeSlider.set(cfg.textSizeSp());
         opacitySlider.set(cfg.opacityPercent());
         textColorBox.setText(cfg.textColorHex());
-        pillColorBox.setText(cfg.pillColorHex());
         barBgBox.setText(cfg.barBackgroundHex());
         buttonsBox.setText(cfg.buttonsRaw());
         RunLog.add("读取到已保存的配置: " + cfg.summary());
-        updateStatus(cfg);
-        if (logView != null) {
-            logView.setText(RunLog.dump());
-        }
+        refreshLog();
         loading = false;
     }
 
@@ -304,18 +343,9 @@ public final class SettingsActivity extends Activity {
         textSizeSlider.set(BarConfig.DEF_TEXT_SIZE);
         opacitySlider.set(BarConfig.DEF_OPACITY);
         textColorBox.setText(BarConfig.DEF_TEXT_COLOR);
-        pillColorBox.setText(BarConfig.DEF_PILL_BG);
         barBgBox.setText(BarConfig.DEF_BAR_BG);
         buttonsBox.setText(BarConfig.DEFAULT_BUTTONS);
         loading = false;
-    }
-
-    private void updateStatus(BarConfig cfg) {
-        if (statusView == null) {
-            return;
-        }
-        String time = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
-        statusView.setText("已自动保存并下发（" + time + "）：" + cfg.summary());
     }
 
     // ---------- 组件 ----------
@@ -323,7 +353,7 @@ public final class SettingsActivity extends Activity {
     private LinearLayout card(LinearLayout parent, String title) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(roundRect(0xFFFFFFFF, dp(18)));
+        card.setBackground(roundRect(color(R.color.card_bg), dp(18)));
         int p = dp(16);
         card.setPadding(p, p, p, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -334,10 +364,18 @@ public final class SettingsActivity extends Activity {
         TextView head = new TextView(this);
         head.setText(title);
         head.setTextSize(18f);
-        head.setTextColor(0xFF0F7B6C);
+        head.setTextColor(color(R.color.green_accent));
         card.addView(head);
         parent.addView(card);
         return card;
+    }
+
+    private TextView hint(String text) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(12f);
+        view.setTextColor(color(R.color.text_hint));
+        return view;
     }
 
     private Slider addSlider(LinearLayout card, String title, String desc,
@@ -355,19 +393,15 @@ public final class SettingsActivity extends Activity {
         TextView name = new TextView(this);
         name.setText(title);
         name.setTextSize(16f);
-        name.setTextColor(0xFF1A1A1A);
+        name.setTextColor(color(R.color.text_main));
         box.addView(name);
 
-        TextView note = new TextView(this);
-        note.setText(desc);
-        note.setTextSize(12f);
-        note.setTextColor(0xFF8A8A8E);
-        box.addView(note);
+        box.addView(hint(desc));
         head.addView(box);
 
         TextView valueText = new TextView(this);
         valueText.setTextSize(16f);
-        valueText.setTextColor(0xFF1A1A1A);
+        valueText.setTextColor(color(R.color.green_accent));
         head.addView(valueText);
         card.addView(head);
 
@@ -394,8 +428,8 @@ public final class SettingsActivity extends Activity {
     }
 
     /**
-     * 自绘按钮：和卡片同一套配色（主按钮=青底白字，次按钮=浅青底青字）。
-     * 不用系统默认样式的 Button —— 它自带的背景/文字配色和这套界面不搭。
+     * 自绘按钮：主按钮=浅绿底白字，次按钮=浅绿浅底深色字。
+     * 不用系统默认样式的 Button —— 它自带的配色和这套界面不搭。
      */
     private TextView actionButton(String text, boolean primary, View.OnClickListener listener) {
         TextView view = new TextView(this);
@@ -405,10 +439,10 @@ public final class SettingsActivity extends Activity {
         view.setPadding(dp(16), dp(14), dp(16), dp(14));
         if (primary) {
             view.setTextColor(0xFFFFFFFF);
-            view.setBackground(roundRect(0xFF0F7B6C, dp(14)));
+            view.setBackground(roundRect(color(R.color.green_accent), dp(14)));
         } else {
-            view.setTextColor(0xFF0F7B6C);
-            view.setBackground(roundRect(0xFFE3F1EF, dp(14)));
+            view.setTextColor(color(R.color.text_main));
+            view.setBackground(roundRect(color(R.color.green_soft), dp(14)));
         }
         view.setClickable(true);
         view.setOnClickListener(listener);
@@ -423,13 +457,14 @@ public final class SettingsActivity extends Activity {
         TextView name = new TextView(this);
         name.setText(title);
         name.setTextSize(16f);
-        name.setTextColor(0xFF1A1A1A);
+        name.setTextColor(color(R.color.text_main));
         name.setPadding(0, dp(14), 0, 0);
         card.addView(name);
 
         EditText edit = new EditText(this);
         edit.setSingleLine(true);
         edit.setTextSize(14f);
+        edit.setTextColor(color(R.color.text_main));
         edit.setHint(def);
         edit.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -447,6 +482,13 @@ public final class SettingsActivity extends Activity {
         return edit;
     }
 
+    private void toast(String text) {
+        try {
+            Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+        } catch (Throwable ignored) {
+        }
+    }
+
     private GradientDrawable roundRect(int color, float radius) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
@@ -454,22 +496,23 @@ public final class SettingsActivity extends Activity {
         return drawable;
     }
 
+    private int color(int resId) {
+        return getColor(resId);
+    }
+
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 
     private String helpText() {
-        return "普通按钮（第二列写动作）：\n"
+        return "可用动作（第二列）：\n"
                 + "copy 复制 / cut 剪切 / paste 粘贴 / select_all 全选 / clear 清空输入框\n"
                 + "enter 回车 / delete 退格 / left 光标左移 / right 光标右移 / hide 收起键盘\n"
-                + "switch_ime 切换输入法 / insert_date 插入日期 / insert_time 插入时间\n"
-                + "settings 打开本设置页 / log 复制输入法进程日志到剪贴板\n"
                 + "text 插入固定文字（第三列写内容）\n"
-                + "app 打开某个 App（第三列写包名） / url 打开网址（第三列写链接）\n\n"
-                + "菜单按钮（第二列写 menu）：\n"
-                + "第三列写菜单项，多项用 ; 分隔，每项是 文字=动作（也可以 文字=动作=参数）。\n"
-                + "例子：更多|menu|切输入法=switch_ime;插入日期=insert_date;打开设置=settings\n\n"
-                + "所有滑块和开关都是改完自动保存、即时生效，不需要点保存。";
+                + "app 打开某个 App（第三列写包名） / url 打开网址（第三列写链接）\n"
+                + "adb 执行 shell 命令（第三列写命令，需要 root） / log 复制输入法日志\n\n"
+                + "菜单按钮：第二列写 menu，第三列写 文字=动作，多项用 ; 分隔。\n"
+                + "所有滑块和开关都是改完自动保存、即时生效。";
     }
 
     /** 一行滑动条：标题 + 说明 + 右侧数值 */

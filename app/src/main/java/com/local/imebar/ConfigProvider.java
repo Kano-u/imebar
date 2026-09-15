@@ -19,9 +19,6 @@ public final class ConfigProvider extends ContentProvider {
 
     public static final String AUTHORITY = "com.local.imebar.config";
     public static final String METHOD_GET_CONFIG = "get_config";
-    /** 问一句"设置页刚才起来了吗"（输入法进程发完 startActivity 后回查用） */
-    public static final String METHOD_SETTINGS_STATUS = "settings_status";
-    public static final String KEY_SETTINGS_OPENED_AT = "settings_opened_at";
 
     @Override
     public boolean onCreate() {
@@ -30,24 +27,14 @@ public final class ConfigProvider extends ContentProvider {
 
     @Override
     public Bundle call(String method, String arg, Bundle extras) {
-        if (getContext() == null) {
+        if (!METHOD_GET_CONFIG.equals(method) || getContext() == null) {
             return null;
         }
-        if (METHOD_GET_CONFIG.equals(method)) {
-            BarConfig config = BarConfig.fromPrefs(
-                    getContext().getSharedPreferences(BarConfig.GROUP, 0));
-            Bundle bundle = config.toBundle();
-            bundle.putLong("timestamp", System.currentTimeMillis());
-            return bundle;
-        }
-        if (METHOD_SETTINGS_STATUS.equals(method)) {
-            Bundle bundle = new Bundle();
-            bundle.putLong(KEY_SETTINGS_OPENED_AT, getContext()
-                    .getSharedPreferences(BarConfig.GROUP, 0)
-                    .getLong(KEY_SETTINGS_OPENED_AT, 0L));
-            return bundle;
-        }
-        return null;
+        BarConfig config = BarConfig.fromPrefs(
+                getContext().getSharedPreferences(BarConfig.GROUP, 0));
+        Bundle bundle = config.toBundle();
+        bundle.putLong("timestamp", System.currentTimeMillis());
+        return bundle;
     }
 
     @Override

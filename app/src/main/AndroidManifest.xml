@@ -11,6 +11,12 @@
 
     <!-- 注意：没有 INTERNET 权限，没有存储权限，没有短信/联系人/定位权限 -->
 
+    <!-- 自己定义、自己使用：只有本 App（同签名）能发出"配置变更"广播，避免其他 App 乱触发 -->
+    <permission
+        android:name="com.local.imebar.permission.CONFIG"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.local.imebar.permission.CONFIG" />
+
     <application
         android:allowBackup="false"
         android:label="@string/app_name"

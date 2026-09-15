@@ -1,6 +1,7 @@
 package com.local.imebar;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -31,7 +32,6 @@ public final class SettingsActivity extends Activity {
     private Slider edgeSlider;
     private Slider sideSlider;
     private Slider textSizeSlider;
-    private Slider gapSlider;
     private Slider opacitySlider;
     private RadioGroup positionGroup;
     private RadioGroup styleGroup;
@@ -67,8 +67,6 @@ public final class SettingsActivity extends Activity {
                 0, 60, BarConfig.DEF_SIDE_MARGIN, " dp");
         textSizeSlider = addSlider(display, "文字大小", "文字按钮的字号大小",
                 10, 24, BarConfig.DEF_TEXT_SIZE, " dp");
-        gapSlider = addSlider(display, "按钮间距", "按钮之间的距离",
-                0, 30, BarConfig.DEF_BUTTON_GAP, " dp");
         opacitySlider = addSlider(display, "显示透明度", "工具栏整体显示透明度",
                 20, 100, BarConfig.DEF_OPACITY, " %");
 
@@ -149,7 +147,6 @@ public final class SettingsActivity extends Activity {
         edgeSlider.set(cfg.edgeDistanceDp());
         sideSlider.set(cfg.sideMarginDp());
         textSizeSlider.set(cfg.textSizeSp());
-        gapSlider.set(cfg.buttonGapDp());
         opacitySlider.set(cfg.opacityPercent());
         positionGroup.check(positionGroup.getChildAt(cfg.isBottom() ? 0 : 1).getId());
         styleGroup.check(styleGroup.getChildAt(cfg.isPill() ? 1 : 0).getId());
@@ -165,7 +162,6 @@ public final class SettingsActivity extends Activity {
         edgeSlider.set(BarConfig.DEF_EDGE_DISTANCE);
         sideSlider.set(BarConfig.DEF_SIDE_MARGIN);
         textSizeSlider.set(BarConfig.DEF_TEXT_SIZE);
-        gapSlider.set(BarConfig.DEF_BUTTON_GAP);
         opacitySlider.set(BarConfig.DEF_OPACITY);
         positionGroup.check(positionGroup.getChildAt(0).getId());
         styleGroup.check(styleGroup.getChildAt(0).getId());
@@ -184,7 +180,6 @@ public final class SettingsActivity extends Activity {
                 .putInt(BarConfig.KEY_EDGE_DISTANCE, edgeSlider.value())
                 .putInt(BarConfig.KEY_SIDE_MARGIN, sideSlider.value())
                 .putInt(BarConfig.KEY_TEXT_SIZE, textSizeSlider.value())
-                .putInt(BarConfig.KEY_BUTTON_GAP, gapSlider.value())
                 .putInt(BarConfig.KEY_OPACITY, opacitySlider.value())
                 .putString(BarConfig.KEY_STYLE,
                         radioIndex(styleGroup) == 1 ? BarConfig.STYLE_PILL : BarConfig.STYLE_TEXT)
@@ -195,7 +190,13 @@ public final class SettingsActivity extends Activity {
                 .putString(BarConfig.KEY_BAR_BG, barBgBox.getText().toString().trim())
                 .putString(BarConfig.KEY_BUTTONS, buttonsBox.getText().toString())
                 .apply();
-        Toast.makeText(this, "已保存，切换一次输入法生效", Toast.LENGTH_SHORT).show();
+
+        // 立刻通知输入法进程重读配置：这样不用切输入法就能看到效果
+        try {
+            sendBroadcast(new Intent(BarConfig.ACTION_CONFIG_CHANGED));
+        } catch (Throwable ignored) {
+        }
+        Toast.makeText(this, "已保存并即时生效", Toast.LENGTH_SHORT).show();
     }
 
     // ---------- 组件 ----------

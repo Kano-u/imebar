@@ -1,9 +1,13 @@
 package com.local.imebar;
 
 import android.app.Dialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.drawable.GradientDrawable;
 import android.inputmethodservice.InputMethodService;
+import android.os.Build;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -15,33 +19,67 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 
 /**
  * 把工具栏画到输入法窗口里。
  *
- * 位置：默认贴在窗口【底部】，也就是键盘那排按键的下面（这就是 AI超级工具栏 的位置）。
+ * 位置：默认贴在窗口【底部】，也就是键盘那排按键的下面。
  * 坐标系是"输入法窗口"本身：底部距离 = 距键盘底边的高度，左右边距 = 距窗口两侧的距离。
  *
- * 窗口是 wrap_content 且底边对齐屏幕的，所以往底部加一条 View，
- * 窗口会长高、键盘整体上移，新出来的这一条正好落在按键下方。
+ * 配置读取有两条路：
+ *   1) 每次键盘弹出（onStartInputView / onWindowShown）都重新读一次快照 —— 保证设置一定生效；
+ *   2) 设置页保存后会发一条广播，收到就立刻重读并重建 —— 不用切输入法，马上看到效果。
+ * 之所以不能只读一次：libxposed 的远程偏好是内存快照，创建之后不会自己更新。
  */
 final class ImeBar {
 
     private static final String TAG = "ImeBar";
+    /** 按钮间距固定 8dp（原版没有这项设置，就不做成可调） */
+    private static final int BUTTON_GAP_DP = 8;
 
+    private static ConfigSource source;
+    private static WeakReference<InputMethodService> lastService =
+            new WeakReference<InputMethodService>(null);
     /** 记着上次挂上去的那条栏，配置变了就重建 */
     private static View lastBar;
     private static String lastSignature;
+    private static boolean receiverRegistered;
 
     private ImeBar() {
     }
 
-    static void attach(Object serviceObject, BarConfig cfg) {
+    static void setSource(ConfigSource configSource) {
+        source = configSource;
+    }
+
+    /** 键盘弹出 / 窗口显示时调用：重新读配置并按需重建 */
+    static void attach(Object serviceObject) {
         if (!(serviceObject instanceof InputMethodService)) {
             return;
         }
         InputMethodService service = (InputMethodService) serviceObject;
+        lastService = new WeakReference<InputMethodService>(service);
+        registerConfigReceiver(service);
+        attach(service, readConfig());
+    }
+
+    /** 收到"设置已保存"广播后调用：立刻重读并重建 */
+    static void refresh() {
+        InputMethodService service = lastService.get();
+        if (service == null) {
+            return;
+        }
+        attach(service, readConfig());
+    }
+
+    private static BarConfig readConfig() {
+        ConfigSource current = source;
+        return current != null ? current.get() : new BarConfig(null);
+    }
+
+    private static void attach(InputMethodService service, BarConfig cfg) {
         try {
             if (!cfg.enabled()) {
                 removeBar();
@@ -94,9 +132,38 @@ final class ImeBar {
             lastSignature = signature;
             Log.i(TAG, "工具栏已挂载(" + (cfg.isBottom() ? "键盘底部" : "键盘顶部")
                     + "), 按钮数=" + cfg.buttons().size()
-                    + ", 字号=" + cfg.textSizeSp() + "dp, 透明度=" + cfg.opacityPercent() + "%");
+                    + ", 底部距离=" + cfg.edgeDistanceDp() + "dp"
+                    + ", 左右边距=" + cfg.sideMarginDp() + "dp"
+                    + ", 字号=" + cfg.textSizeSp() + "dp"
+                    + ", 透明度=" + cfg.opacityPercent() + "%");
         } catch (Throwable t) {
             Log.e(TAG, "挂载工具栏失败", t);
+        }
+    }
+
+    /** 让设置页的改动能立刻生效：只有持有本模块签名级权限的 App 才发得进来 */
+    private static void registerConfigReceiver(Context context) {
+        if (receiverRegistered) {
+            return;
+        }
+        receiverRegistered = true;
+        try {
+            BroadcastReceiver receiver = new BroadcastReceiver() {
+                public void onReceive(Context ctx, Intent intent) {
+                    Log.i(TAG, "收到配置变更，立刻重读并重建工具栏");
+                    refresh();
+                }
+            };
+            IntentFilter filter = new IntentFilter(BarConfig.ACTION_CONFIG_CHANGED);
+            if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(receiver, filter, BarConfig.PERMISSION_CONFIG, null,
+                        Context.RECEIVER_EXPORTED);
+            } else {
+                context.registerReceiver(receiver, filter, BarConfig.PERMISSION_CONFIG, null);
+            }
+            Log.i(TAG, "已注册配置变更接收器");
+        } catch (Throwable t) {
+            Log.w(TAG, "注册配置变更接收器失败（改动仍会在下次弹出键盘时生效）", t);
         }
     }
 
@@ -122,7 +189,7 @@ final class ImeBar {
 
         // 用 px 直接给定字号：版式完全按 dp 走，不受系统字体缩放影响（否则用户改字体大小会把栏撑变形）
         float textPx = cfg.textSizeSp() * density;
-        int gap = (int) (cfg.buttonGapDp() * density + 0.5f);
+        int gap = (int) (BUTTON_GAP_DP * density + 0.5f);
         int sidePad = (int) (cfg.sideMarginDp() * density + 0.5f);
         int vPad = (int) ((cfg.isPill() ? 6 : 8) * density + 0.5f);
         int hPad = (int) ((cfg.isPill() ? 12 : 6) * density + 0.5f);

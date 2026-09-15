@@ -20,13 +20,17 @@ public final class BarConfig {
     public static final String GROUP = "config";
     public static final String MODULE_PKG = "com.local.imebar";
 
+    /** 设置页保存后发的广播：让输入法进程立刻重读配置并重建工具栏 */
+    public static final String ACTION_CONFIG_CHANGED = "com.local.imebar.action.CONFIG_CHANGED";
+    /** 只有本 App（同名同签名）才能触发上面那个广播 */
+    public static final String PERMISSION_CONFIG = "com.local.imebar.permission.CONFIG";
+
     // 显示
     public static final String KEY_ENABLED = "bar_enabled";
     public static final String KEY_POSITION = "bar_position";          // bottom | top
     public static final String KEY_EDGE_DISTANCE = "edge_distance_dp";
     public static final String KEY_SIDE_MARGIN = "side_margin_dp";
     public static final String KEY_TEXT_SIZE = "text_size_sp";
-    public static final String KEY_BUTTON_GAP = "button_gap_dp";
     public static final String KEY_OPACITY = "opacity_percent";
 
     // 样式
@@ -49,7 +53,6 @@ public final class BarConfig {
     public static final int DEF_EDGE_DISTANCE = 12;
     public static final int DEF_SIDE_MARGIN = 15;
     public static final int DEF_TEXT_SIZE = 12;
-    public static final int DEF_BUTTON_GAP = 8;
     public static final int DEF_OPACITY = 80;
 
     public static final String DEF_TEXT_COLOR = "#202124";
@@ -90,10 +93,6 @@ public final class BarConfig {
 
     public int textSizeSp() {
         return clamp(getInt(KEY_TEXT_SIZE, DEF_TEXT_SIZE), 10, 24);
-    }
-
-    public int buttonGapDp() {
-        return clamp(getInt(KEY_BUTTON_GAP, DEF_BUTTON_GAP), 0, 30);
     }
 
     public int opacityPercent() {
@@ -204,7 +203,7 @@ public final class BarConfig {
     /** 用来判断配置有没有变，变了就重建工具栏 */
     public String signature() {
         return enabled() + "|" + isBottom() + "|" + edgeDistanceDp() + "|" + sideMarginDp()
-                + "|" + textSizeSp() + "|" + buttonGapDp() + "|" + opacityPercent()
+                + "|" + textSizeSp() + "|" + opacityPercent()
                 + "|" + isPill() + "|" + isStretch() + "|" + textColorHex() + "|" + pillColorHex()
                 + "|" + barBackgroundHex() + "|" + buttonsRaw();
     }

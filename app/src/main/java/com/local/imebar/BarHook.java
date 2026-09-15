@@ -25,11 +25,12 @@ final class BarHook {
         void run(Object thisObject);
     }
 
-    static void install(XposedModule module, ClassLoader classLoader, BarConfig cfg, String pkg) {
+    static void install(XposedModule module, ClassLoader classLoader, ConfigSource source, String pkg) {
         if (installed) {
             return;
         }
         installed = true;
+        ImeBar.setSource(source);
         try {
             Class<?> ims = Class.forName("android.inputmethodservice.InputMethodService", false, classLoader);
 
@@ -37,14 +38,14 @@ final class BarHook {
             hook(module, ims, "onStartInputView", new Class<?>[]{EditorInfo.class, boolean.class}, new After() {
                 public void run(Object service) {
                     BarMenu.dismiss();
-                    ImeBar.attach(service, cfg);
+                    ImeBar.attach(service);
                 }
             });
 
             // 窗口显示（有些场景不触发 onStartInputView）
             hook(module, ims, "onWindowShown", new Class<?>[0], new After() {
                 public void run(Object service) {
-                    ImeBar.attach(service, cfg);
+                    ImeBar.attach(service);
                 }
             });
 

@@ -16,7 +16,17 @@ public final class BarModule extends XposedModule {
 
     public static final String TAG = "ImeBar";
 
-    private volatile BarConfig config;
+    /** 每次调用都重新取快照，保证设置改动能被读到 */
+    private final ConfigSource source = new ConfigSource() {
+        public BarConfig get() {
+            try {
+                return new BarConfig(BarModule.this.getRemotePreferences(BarConfig.GROUP));
+            } catch (Throwable t) {
+                Log.w(TAG, "读取远程配置失败，先用默认值", t);
+                return new BarConfig(null);
+            }
+        }
+    };
 
     public BarModule() {
         super();
@@ -30,13 +40,13 @@ public final class BarModule extends XposedModule {
         }
         Log.i(TAG, "模块已加载, 进程=" + process);
 
-        SharedPreferences remote = null;
         try {
-            remote = getRemotePreferences(BarConfig.GROUP);
+            SharedPreferences remote = getRemotePreferences(BarConfig.GROUP);
+            int count = remote == null ? 0 : remote.getAll().size();
+            Log.i(TAG, "远程配置可读, 键数量=" + count);
         } catch (Throwable t) {
             Log.w(TAG, "读不到远程配置，先用默认值", t);
         }
-        config = new BarConfig(remote);
     }
 
     public void onPackageReady(XposedModuleInterface.PackageReadyParam param) {
@@ -48,12 +58,7 @@ public final class BarModule extends XposedModule {
             if (pkg == null || BarConfig.MODULE_PKG.equals(pkg)) {
                 return; // 不处理自己
             }
-            BarConfig cfg = config;
-            if (cfg == null) {
-                cfg = new BarConfig(null);
-                config = cfg;
-            }
-            BarHook.install(this, param.getClassLoader(), cfg, pkg);
+            BarHook.install(this, param.getClassLoader(), source, pkg);
         } catch (Throwable t) {
             Log.e(TAG, "onPackageReady 出错", t);
         }

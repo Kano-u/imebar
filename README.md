@@ -157,8 +157,10 @@ I ImeBar: 工具栏已挂载, 按钮数=7
 
 ## 五、技术备注
 
-* 依赖：`compileOnly io.github.libxposed:api:102.0.0`（运行时由框架提供，不打进 APK）+
-  `implementation io.github.libxposed:service:102.0.0`（提供 `XposedProvider`，远程配置用）；
+* 依赖：官方 libxposed 的三个 jar 放在 `app/libs/`（从官方 AAR 里抽出的 classes.jar，见该目录的 README.txt）：
+  `api` 是 `compileOnly`（运行时由 LSPosed 框架提供，绝不能打进 APK），
+  `service`+`interface` 是 `implementation`（提供 `XposedProvider`，远程配置要用）。
+  这样绕开了官方 AAR 元数据里 `minCompileSdk=37` 的限制，用 AGP 8.7.3 + compileSdk 35 即可编译；
 * 模块声明：`app/src/main/resources/META-INF/xposed/module.prop`（`minApiVersion=101`）+
   `java_init.list`（入口类 `com.local.imebar.BarModule`）；
 * 远程配置：设置页写 `SharedPreferences("config")`，输入法进程用

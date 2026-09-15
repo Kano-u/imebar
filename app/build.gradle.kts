@@ -4,8 +4,7 @@ plugins {
 
 android {
     namespace = "com.local.imebar"
-    // libxposed 的 AAR 要求 compileSdk >= 37
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.local.imebar"
@@ -35,13 +34,13 @@ android {
     }
 }
 
-configurations.all {
-    // libxposed 的 api 由 LSPosed 框架在运行时提供，不能打进 APK
-    exclude(group = "io.github.libxposed", module = "api")
-}
-
 dependencies {
-    compileOnly("io.github.libxposed:api:102.0.0")
-    // service 里带 XposedProvider（远程配置读取需要它）
-    implementation("io.github.libxposed:service:102.0.0")
+    // 这三个 jar 是从官方 AAR 里抽出来的 classes.jar（见 app/libs/README.txt）。
+    // 用普通 jar 而不是 AAR，可以避开 AAR 元数据里 minCompileSdk=37 的限制，
+    // 这样用 AGP 8.7.3 + compileSdk 35 就能编，CI 也不用额外装 android-37。
+    //
+    // api 由 LSPosed 框架在运行时提供，绝不能打进 APK，所以是 compileOnly；
+    // service 提供 XposedProvider（远程配置读取要用），interface 是它依赖的 AIDL 接口。
+    compileOnly(files("libs/libxposed-api.jar"))
+    implementation(files("libs/libxposed-service.jar", "libs/libxposed-interface.jar"))
 }

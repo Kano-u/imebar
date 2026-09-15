@@ -6,9 +6,9 @@
     -->
     <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
         <item name="android:windowBackground">@color/page_bg</item>
-        <item name="android:colorAccent">@color/green_accent</item>
-        <item name="android:colorControlActivated">@color/green_accent</item>
-        <item name="android:colorControlHighlight">@color/green_ripple</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorControlActivated">@color/accent</item>
+        <item name="android:colorControlHighlight">@color/accent_ripple</item>
         <item name="android:statusBarColor">@color/page_bg</item>
         <item name="android:navigationBarColor">@color/page_bg</item>
         <item name="android:windowLightStatusBar">true</item>

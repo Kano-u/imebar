@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  简约风：卡片是纯白 + 黑字，页面是很浅的灰底（这样白卡片才看得出来、左右也留得出间隙）；
-  浅绿只出现在三处——对勾（复选框）、可拖动数值条（SeekBar）、按钮。
+  简约卡片风 + 蓝色点缀：页面浅灰底、卡片纯白（带阴影）、正文黑字；
+  蓝色只出现在——对勾（复选框）、可拖动数值条（SeekBar）、按钮，以及卡片标题。
   颜色只写在这里，别在代码里散落色值。
 -->
 <resources>
     <color name="page_bg">#FFF2F2F7</color>
     <color name="card_bg">#FFFFFFFF</color>
     <!-- 主色：对勾 / 数值条 / 按钮 -->
-    <color name="green_accent">#FF4CAF50</color>
-    <!-- 卡片标题用的绿：比主色再深一点 -->
-    <color name="green_deep">#FF388E3C</color>
-    <color name="green_soft">#FFE8F5E9</color>
-    <color name="green_ripple">#334CAF50</color>
+    <color name="accent">#FF2196F3</color>
+    <!-- 卡片标题用的蓝：比主色再深一点 -->
+    <color name="accent_deep">#FF1565C0</color>
+    <color name="accent_soft">#FFE3F2FD</color>
+    <color name="accent_ripple">#332196F3</color>
     <color name="text_main">#FF1A1A1A</color>
     <color name="text_hint">#FF8A8A8E</color>
     <!-- 日志/执行结果框的中性浅灰底 -->

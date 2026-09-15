@@ -23,8 +23,8 @@ import android.widget.Toast;
 /**
  * 设置页：改完点「保存」才生效（手动保存，不做自动保存）。
  *
- * 页面是简约卡片风：浅灰底 + 白色圆角卡片，一节一张卡，左右和卡片之间都留间隙；
- * 卡片标题用比主色再深一点的绿，浅绿（对勾 / 数值条 / 按钮）只做点缀。
+ * 页面是简约卡片风：浅灰底 + 白色圆角卡片（带一点阴影），一节一张卡，左右和卡片之间都留间隙；
+ * 卡片标题用比主色再深一点的蓝，蓝色（对勾 / 数值条 / 按钮）只做点缀。
  * 颜色统一在 res/values/colors.xml 里，不在代码里散落色值。
  */
 public final class SettingsActivity extends Activity {
@@ -244,13 +244,14 @@ public final class SettingsActivity extends Activity {
     // ---------- 组件 ----------
 
     /**
-     * 一节内容 = 一张白色圆角卡片（圆角 18dp、内边距 16dp、卡片之间 12dp 间隙）。
-     * 标题用比主色更深的绿 {@code green_deep}。
+     * 一节内容 = 一张白色圆角卡片（圆角 18dp、内边距 16dp、卡片之间 12dp 间隙、带一点阴影）。
+     * 标题用比主色更深的蓝 {@code accent_deep}。
      */
     private LinearLayout card(LinearLayout parent, String title) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(roundRect(color(R.color.card_bg), dp(18)));
+        card.setElevation(dp(3));   // 卡片阴影：让白卡片从浅灰底上"浮"起来
         int p = dp(16);
         card.setPadding(p, p, p, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -261,7 +262,7 @@ public final class SettingsActivity extends Activity {
         TextView head = new TextView(this);
         head.setText(title);
         head.setTextSize(17f);
-        head.setTextColor(color(R.color.green_deep));
+        head.setTextColor(color(R.color.accent_deep));
         card.addView(head);
         parent.addView(card);
         return card;
@@ -325,7 +326,7 @@ public final class SettingsActivity extends Activity {
     }
 
     /**
-     * 自绘按钮：主按钮=浅绿底白字，次按钮=很浅的绿底黑字。
+     * 自绘按钮：主按钮=蓝底白字，次按钮=很浅的蓝底黑字。
      * 不用系统默认样式的 Button —— 它自带的配色和这套界面不搭。
      */
     private TextView actionButton(String text, boolean primary, View.OnClickListener listener) {
@@ -336,10 +337,10 @@ public final class SettingsActivity extends Activity {
         view.setPadding(dp(16), dp(14), dp(16), dp(14));
         if (primary) {
             view.setTextColor(0xFFFFFFFF);
-            view.setBackground(roundRect(color(R.color.green_accent), dp(14)));
+            view.setBackground(roundRect(color(R.color.accent), dp(14)));
         } else {
             view.setTextColor(color(R.color.text_main));
-            view.setBackground(roundRect(color(R.color.green_soft), dp(14)));
+            view.setBackground(roundRect(color(R.color.accent_soft), dp(14)));
         }
         view.setClickable(true);
         view.setOnClickListener(listener);

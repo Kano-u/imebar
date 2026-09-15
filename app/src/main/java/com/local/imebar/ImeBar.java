@@ -15,16 +15,16 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.List;
+
 /**
- * 把一条"胶囊按钮栏"画到输入法窗口的最上方。
+ * 把工具栏画到输入法窗口里。
  *
- * 输入法窗口本身是个 Dialog（InputMethodService.getWindow()），
- * 我们把 View 加进它的 DecorView（一个 FrameLayout），gravity=TOP 就是"键盘上方"。
+ * 位置：默认贴在窗口【底部】，也就是键盘那排按键的下面（这就是 AI超级工具栏 的位置）。
+ * 坐标系是"输入法窗口"本身：底部距离 = 距键盘底边的高度，左右边距 = 距窗口两侧的距离。
  *
- * 视觉目标：
- *   - 整条栏默认全透明，让输入法自己的背景透出来（"没有存在感"）；
- *   - 按钮是文字为主的胶囊（全圆角、浅色底、深色字），不画图标；
- *   - 点普通按钮直接执行；点带菜单的按钮弹出居中卡片菜单。
+ * 窗口是 wrap_content 且底边对齐屏幕的，所以往底部加一条 View，
+ * 窗口会长高、键盘整体上移，新出来的这一条正好落在按键下方。
  */
 final class ImeBar {
 
@@ -72,18 +72,29 @@ final class ImeBar {
 
             // 关键：用 DecorView 的 Context 建 View，它带主题；直接用 Service 当 Context 会崩
             Context viewContext = root.getContext();
-            View bar = build(viewContext, service, cfg);
-
             float density = viewContext.getResources().getDisplayMetrics().density;
+
+            View bar = build(viewContext, service, cfg);
+            bar.setAlpha(cfg.opacityPercent() / 100f); // 显示透明度：整条栏有效
+
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
-                    (int) (cfg.heightDp() * density + 0.5f));
-            lp.gravity = Gravity.TOP;
+                    FrameLayout.LayoutParams.WRAP_CONTENT);
+            int edge = (int) (cfg.edgeDistanceDp() * density + 0.5f);
+            if (cfg.isBottom()) {
+                lp.gravity = Gravity.BOTTOM;
+                lp.bottomMargin = edge;
+            } else {
+                lp.gravity = Gravity.TOP;
+                lp.topMargin = edge;
+            }
 
             root.addView(bar, lp);
             lastBar = bar;
             lastSignature = signature;
-            Log.i(TAG, "工具栏已挂载, 按钮数=" + cfg.buttons().size());
+            Log.i(TAG, "工具栏已挂载(" + (cfg.isBottom() ? "键盘底部" : "键盘顶部")
+                    + "), 按钮数=" + cfg.buttons().size()
+                    + ", 字号=" + cfg.textSizeSp() + "dp, 透明度=" + cfg.opacityPercent() + "%");
         } catch (Throwable t) {
             Log.e(TAG, "挂载工具栏失败", t);
         }
@@ -108,34 +119,38 @@ final class ImeBar {
 
     private static View build(final Context context, final InputMethodService service, final BarConfig cfg) {
         float density = context.getResources().getDisplayMetrics().density;
-        int barHeight = (int) (cfg.heightDp() * density + 0.5f);
 
-        // 胶囊高度：占满栏高减去上下留白
-        int pillHeight = Math.max((int) (30 * density + 0.5f), barHeight - dp(density, 10));
+        // 用 px 直接给定字号：版式完全按 dp 走，不受系统字体缩放影响（否则用户改字体大小会把栏撑变形）
+        float textPx = cfg.textSizeSp() * density;
+        int gap = (int) (cfg.buttonGapDp() * density + 0.5f);
+        int sidePad = (int) (cfg.sideMarginDp() * density + 0.5f);
+        int vPad = (int) ((cfg.isPill() ? 6 : 8) * density + 0.5f);
+        int hPad = (int) ((cfg.isPill() ? 12 : 6) * density + 0.5f);
 
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        int sidePad = dp(density, 8);
-        row.setPadding(sidePad, 0, sidePad, 0);
 
-        for (final BarConfig.Button button : cfg.buttons()) {
-            TextView pill = new TextView(context);
-            pill.setText(button.label);
-            pill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
-            pill.setTextColor(cfg.textColor());
-            pill.setGravity(Gravity.CENTER);
-            pill.setSingleLine(true);
-            pill.setIncludeFontPadding(false);
-            int hPad = dp(density, 16);
-            pill.setPadding(hPad, 0, hPad, 0);
-            pill.setBackground(pillBackground(cfg.pillColor(), pillHeight / 2f));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, pillHeight);
-            lp.rightMargin = dp(density, 8);
-            pill.setLayoutParams(lp);
-            pill.setClickable(true);
-            pill.setOnClickListener(new View.OnClickListener() {
+        List<BarConfig.Button> buttons = cfg.buttons();
+        boolean stretch = cfg.isStretch();
+
+        for (int i = 0; i < buttons.size(); i++) {
+            final BarConfig.Button button = buttons.get(i);
+
+            TextView item = new TextView(context);
+            item.setText(button.label);
+            item.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx);
+            item.setTextColor(cfg.textColor());
+            item.setGravity(Gravity.CENTER);
+            item.setSingleLine(true);
+            item.setIncludeFontPadding(false);
+            item.setPadding(hPad, vPad, hPad, vPad);
+            if (cfg.isPill()) {
+                item.setBackground(pillBackground(cfg.pillColor(),
+                        (textPx + 2 * (float) vPad) / 2f));
+            }
+            item.setClickable(true);
+            item.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     if (button.menuItems != null && !button.menuItems.isEmpty()) {
                         View decor = v.getRootView();
@@ -147,29 +162,46 @@ final class ImeBar {
                     }
                 }
             });
-            row.addView(pill);
+
+            LinearLayout.LayoutParams lp;
+            if (stretch) {
+                // 均分铺满：每个按钮等宽，像 AI超级工具栏 那样横向排开
+                lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                lp.setMargins(gap / 2, 0, gap / 2, 0);
+            } else {
+                lp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                if (i < buttons.size() - 1) {
+                    lp.rightMargin = gap;
+                }
+            }
+            item.setLayoutParams(lp);
+            row.addView(item);
         }
 
-        HorizontalScrollView scroll = new HorizontalScrollView(context);
-        scroll.setHorizontalScrollBarEnabled(false);
-        scroll.setFillViewport(true);
-        scroll.setBackgroundColor(cfg.barBackgroundColor());
-        scroll.addView(row, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-        return scroll;
+        View bar;
+        if (stretch) {
+            row.setPadding(sidePad, vPad, sidePad, vPad);
+            bar = row;
+        } else {
+            HorizontalScrollView scroll = new HorizontalScrollView(context);
+            scroll.setHorizontalScrollBarEnabled(false);
+            scroll.setPadding(sidePad, vPad, sidePad, vPad);
+            scroll.addView(row, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT));
+            bar = scroll;
+        }
+        bar.setBackgroundColor(cfg.barBackgroundColor());
+        return bar;
     }
 
-    /** 全圆角胶囊：圆角半径取高度的一半 */
+    /** 胶囊背景：圆角取高度的一半，得到全圆角 */
     private static GradientDrawable pillBackground(int color, float radiusPx) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setShape(GradientDrawable.RECTANGLE);
         drawable.setColor(color);
         drawable.setCornerRadius(radiusPx);
         return drawable;
-    }
-
-    private static int dp(float density, int value) {
-        return (int) (value * density + 0.5f);
     }
 }

@@ -10,36 +10,58 @@ import java.util.List;
  * 模块配置。数据存在"模块 App"自己的 SharedPreferences("config") 里，
  * 输入法进程通过 libxposed 的 getRemotePreferences("config") 读到同一份内容。
  *
- * 按钮格式（一行一个）：显示文字|动作|参数
- *   - 普通按钮  复制|copy
- *   - 带参数    插入地址|text|广东省深圳市xx路1号
- *   - 菜单按钮  更多|menu|切输入法=switch_ime;插入日期=insert_date
- *     菜单项之间用 ; 分隔，每项是 文字=动作 或 文字=动作=参数
+ * 坐标参照的是"输入法窗口"本身，不是屏幕：
+ *   位置     = 键盘底部（默认）/ 键盘顶部
+ *   底部距离 = 工具栏距键盘那一条边缘的高度
+ *   左右边距 = 工具栏两侧与窗口边缘的距离
  */
 public final class BarConfig {
 
     public static final String GROUP = "config";
     public static final String MODULE_PKG = "com.local.imebar";
 
+    // 显示
     public static final String KEY_ENABLED = "bar_enabled";
-    public static final String KEY_HEIGHT = "bar_height_dp";
-    public static final String KEY_BAR_BG = "bar_bg_color";
+    public static final String KEY_POSITION = "bar_position";          // bottom | top
+    public static final String KEY_EDGE_DISTANCE = "edge_distance_dp";
+    public static final String KEY_SIDE_MARGIN = "side_margin_dp";
+    public static final String KEY_TEXT_SIZE = "text_size_sp";
+    public static final String KEY_BUTTON_GAP = "button_gap_dp";
+    public static final String KEY_OPACITY = "opacity_percent";
+
+    // 样式
+    public static final String KEY_STYLE = "button_style";             // text | pill
+    public static final String KEY_LAYOUT = "button_layout";           // stretch | left
+    public static final String KEY_TEXT_COLOR = "text_color";
     public static final String KEY_PILL_BG = "pill_bg_color";
-    public static final String KEY_TEXT = "text_color";
+    public static final String KEY_BAR_BG = "bar_bg_color";
+
+    // 按钮
     public static final String KEY_BUTTONS = "buttons";
 
-    public static final int DEFAULT_HEIGHT_DP = 46;
-    /** 默认全透明：让输入法自己的背景透出来，整条栏"没有存在感" */
-    public static final String DEFAULT_BAR_BG = "#00000000";
-    /** 胶囊按钮底色：接近白，键盘上是浅灰背景时观感最接近系统键盘 */
-    public static final String DEFAULT_PILL_BG = "#F2F3F5";
-    public static final String DEFAULT_TEXT = "#202124";
+    public static final String POSITION_BOTTOM = "bottom";
+    public static final String POSITION_TOP = "top";
+    public static final String STYLE_TEXT = "text";
+    public static final String STYLE_PILL = "pill";
+    public static final String LAYOUT_STRETCH = "stretch";
+    public static final String LAYOUT_LEFT = "left";
+
+    public static final int DEF_EDGE_DISTANCE = 12;
+    public static final int DEF_SIDE_MARGIN = 15;
+    public static final int DEF_TEXT_SIZE = 12;
+    public static final int DEF_BUTTON_GAP = 8;
+    public static final int DEF_OPACITY = 80;
+
+    public static final String DEF_TEXT_COLOR = "#202124";
+    public static final String DEF_PILL_BG = "#F2F3F5";
+    public static final String DEF_BAR_BG = "#00000000";
 
     public static final String DEFAULT_BUTTONS =
             "复制|copy\n"
                     + "粘贴|paste\n"
                     + "全选|select_all\n"
-                    + "更多|menu|切输入法=switch_ime;插入日期=insert_date;插入时间=insert_time;收起键盘=hide;打开设置=settings";
+                    + "收起键盘|hide\n"
+                    + "更多|menu|切输入法=switch_ime;插入日期=insert_date;插入时间=insert_time;打开设置=settings";
 
     private final SharedPreferences prefs;
 
@@ -47,67 +69,79 @@ public final class BarConfig {
         this.prefs = prefs;
     }
 
+    // ---------- 显示 ----------
+
     public boolean enabled() {
-        try {
-            return prefs == null || prefs.getBoolean(KEY_ENABLED, true);
-        } catch (Throwable ignored) {
-            return true;
-        }
+        return getBoolean(KEY_ENABLED, true);
     }
 
-    public int heightDp() {
-        int value = DEFAULT_HEIGHT_DP;
-        try {
-            if (prefs != null) {
-                value = prefs.getInt(KEY_HEIGHT, DEFAULT_HEIGHT_DP);
-            }
-        } catch (Throwable ignored) {
-        }
-        if (value < 30) {
-            value = 30;
-        }
-        if (value > 96) {
-            value = 96;
-        }
-        return value;
+    public boolean isBottom() {
+        return !POSITION_TOP.equals(getString(KEY_POSITION, POSITION_BOTTOM));
     }
 
-    public String buttonsRaw() {
-        try {
-            if (prefs != null) {
-                String value = prefs.getString(KEY_BUTTONS, null);
-                if (value != null && value.trim().length() > 0) {
-                    return value;
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-        return DEFAULT_BUTTONS;
+    /** 工具栏距键盘那一条边缘的高度（位置=底部时是底边，位置=顶部时是顶边） */
+    public int edgeDistanceDp() {
+        return clamp(getInt(KEY_EDGE_DISTANCE, DEF_EDGE_DISTANCE), 0, 60);
     }
 
-    public int barBackgroundColor() {
-        return parseColor(KEY_BAR_BG, DEFAULT_BAR_BG, Color.TRANSPARENT);
+    public int sideMarginDp() {
+        return clamp(getInt(KEY_SIDE_MARGIN, DEF_SIDE_MARGIN), 0, 60);
     }
 
-    public int pillColor() {
-        return parseColor(KEY_PILL_BG, DEFAULT_PILL_BG, 0xFFF2F3F5);
+    public int textSizeSp() {
+        return clamp(getInt(KEY_TEXT_SIZE, DEF_TEXT_SIZE), 10, 24);
+    }
+
+    public int buttonGapDp() {
+        return clamp(getInt(KEY_BUTTON_GAP, DEF_BUTTON_GAP), 0, 30);
+    }
+
+    public int opacityPercent() {
+        return clamp(getInt(KEY_OPACITY, DEF_OPACITY), 20, 100);
+    }
+
+    // ---------- 样式 ----------
+
+    public boolean isPill() {
+        return STYLE_PILL.equals(getString(KEY_STYLE, STYLE_TEXT));
+    }
+
+    public boolean isStretch() {
+        return !LAYOUT_LEFT.equals(getString(KEY_LAYOUT, LAYOUT_STRETCH));
+    }
+
+    public String textColorHex() {
+        return getString(KEY_TEXT_COLOR, DEF_TEXT_COLOR);
+    }
+
+    public String pillColorHex() {
+        return getString(KEY_PILL_BG, DEF_PILL_BG);
+    }
+
+    public String barBackgroundHex() {
+        return getString(KEY_BAR_BG, DEF_BAR_BG);
     }
 
     public int textColor() {
-        return parseColor(KEY_TEXT, DEFAULT_TEXT, 0xFF202124);
+        return parseColor(textColorHex(), 0xFF202124);
     }
 
-    private int parseColor(String key, String def, int fallback) {
-        try {
-            if (prefs != null) {
-                String value = prefs.getString(key, def);
-                if (value != null && value.trim().length() > 0) {
-                    return Color.parseColor(value.trim());
-                }
-            }
-        } catch (Throwable ignored) {
+    public int pillColor() {
+        return parseColor(pillColorHex(), 0xFFF2F3F5);
+    }
+
+    public int barBackgroundColor() {
+        return parseColor(barBackgroundHex(), Color.TRANSPARENT);
+    }
+
+    // ---------- 按钮 ----------
+
+    public String buttonsRaw() {
+        String value = getString(KEY_BUTTONS, null);
+        if (value != null && value.trim().length() > 0) {
+            return value;
         }
-        return fallback;
+        return DEFAULT_BUTTONS;
     }
 
     public List<Button> buttons() {
@@ -132,7 +166,7 @@ public final class BarConfig {
             }
             List<Item> items = "menu".equals(action) ? parseMenu(arg) : null;
             if (items != null && items.isEmpty()) {
-                continue; // 菜单里一条都没有，就不显示这个按钮
+                continue;
             }
             list.add(new Button(label, action, arg, items));
         }
@@ -169,8 +203,57 @@ public final class BarConfig {
 
     /** 用来判断配置有没有变，变了就重建工具栏 */
     public String signature() {
-        return enabled() + "|" + heightDp() + "|" + barBackgroundColor() + "|"
-                + pillColor() + "|" + textColor() + "|" + buttonsRaw();
+        return enabled() + "|" + isBottom() + "|" + edgeDistanceDp() + "|" + sideMarginDp()
+                + "|" + textSizeSp() + "|" + buttonGapDp() + "|" + opacityPercent()
+                + "|" + isPill() + "|" + isStretch() + "|" + textColorHex() + "|" + pillColorHex()
+                + "|" + barBackgroundHex() + "|" + buttonsRaw();
+    }
+
+    // ---------- 读写小工具（远程偏好偶尔会抛异常，统一兜住） ----------
+
+    private boolean getBoolean(String key, boolean def) {
+        try {
+            return prefs == null || prefs.getBoolean(key, def);
+        } catch (Throwable ignored) {
+            return def;
+        }
+    }
+
+    private int getInt(String key, int def) {
+        try {
+            return prefs == null ? def : prefs.getInt(key, def);
+        } catch (Throwable ignored) {
+            return def;
+        }
+    }
+
+    private String getString(String key, String def) {
+        try {
+            if (prefs == null) {
+                return def;
+            }
+            String value = prefs.getString(key, def);
+            return value == null ? def : value;
+        } catch (Throwable ignored) {
+            return def;
+        }
+    }
+
+    private static int parseColor(String value, int fallback) {
+        try {
+            if (value != null && value.trim().length() > 0) {
+                return Color.parseColor(value.trim());
+            }
+        } catch (Throwable ignored) {
+        }
+        return fallback;
+    }
+
+    private static int clamp(int value, int min, int max) {
+        if (value < min) {
+            return min;
+        }
+        return value > max ? max : value;
     }
 
     public static final class Button {

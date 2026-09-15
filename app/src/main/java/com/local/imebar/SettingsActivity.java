@@ -3,15 +3,20 @@ package com.local.imebar;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.drawable.GradientDrawable;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
@@ -21,13 +26,28 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 /**
- * 设置页：写进 SharedPreferences("config")，输入法进程通过远程偏好读到。
- * 排布模仿 AI超级工具栏 的"显示设置"：白卡片 + 标题 + 滑动条 + 右侧数值。
+ * 设置页。
+ *
+ * 关键行为：**改动即自动保存并即时下发**（跟 AI超级工具栏 一样，它的说明文字就是
+ * "所有滑块/开关改完自动保存、即时生效"）。不需要点保存：
+ *   - 滑块：松手时保存
+ *   - 开关/单选：改变时保存
+ *   - 文本框（颜色/按钮）：停止输入 0.6 秒后保存；离开页面时也保存一次
+ * 每次保存都会写偏好 + 广播配置数值给输入法进程。
  */
 public final class SettingsActivity extends Activity {
 
     private SharedPreferences prefs;
+    /** 正在把已保存的值填进控件时，不要触发自动保存 */
+    private boolean loading = true;
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable pendingTextApply;
 
     private CheckBox enabledBox;
     private Slider edgeSlider;
@@ -41,6 +61,7 @@ public final class SettingsActivity extends Activity {
     private EditText pillColorBox;
     private EditText barBgBox;
     private EditText buttonsBox;
+    private TextView statusView;
     private TextView logView;
 
     @Override
@@ -58,10 +79,20 @@ public final class SettingsActivity extends Activity {
         // ---------- 显示设置 ----------
         LinearLayout display = card(root, "显示设置");
 
+        statusView = new TextView(this);
+        statusView.setTextSize(12f);
+        statusView.setTextColor(0xFF0F7B6C);
+        display.addView(statusView);
+
         enabledBox = new CheckBox(this);
         enabledBox.setText("启用工具栏");
         enabledBox.setTextSize(16f);
         enabledBox.setTextColor(0xFF1A1A1A);
+        enabledBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                applyNow("启用开关");
+            }
+        });
         display.addView(enabledBox);
 
         edgeSlider = addSlider(display, "底部距离", "工具栏距键盘底部的高度",
@@ -85,7 +116,7 @@ public final class SettingsActivity extends Activity {
         // ---------- 按钮 ----------
         LinearLayout buttons = card(root, "按钮");
         TextView tip = new TextView(this);
-        tip.setText("一行一个：显示文字|动作|参数");
+        tip.setText("一行一个：显示文字|动作|参数（改完停一下会自动保存）");
         tip.setTextSize(13f);
         tip.setTextColor(0xFF8A8A8E);
         buttons.addView(tip);
@@ -95,6 +126,17 @@ public final class SettingsActivity extends Activity {
         buttonsBox.setMinLines(6);
         buttonsBox.setTextSize(14f);
         buttonsBox.setGravity(Gravity.TOP | Gravity.START);
+        buttonsBox.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            public void afterTextChanged(Editable s) {
+                scheduleApply("按钮列表");
+            }
+        });
         buttons.addView(buttonsBox, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -108,7 +150,7 @@ public final class SettingsActivity extends Activity {
         // ---------- 运行日志 ----------
         LinearLayout logCard = card(root, "运行日志");
         TextView logTip = new TextView(this);
-        logTip.setText("这里显示的是模块 App 进程的日志。输入法进程的日志请用工具栏上的"
+        logTip.setText("这里显示模块 App 进程的日志。输入法进程的日志请用工具栏上的"
                 + "「更多 → 复制日志」按钮取；两边都发我最容易定位问题。");
         logTip.setTextSize(12f);
         logTip.setTextColor(0xFF8A8A8E);
@@ -142,15 +184,15 @@ public final class SettingsActivity extends Activity {
         logCard.addView(copyLog, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // ---------- 底部按钮 ----------
-        Button save = new Button(this);
-        save.setText("保存");
-        save.setOnClickListener(new View.OnClickListener() {
+        // ---------- 底部按钮（现在只是兜底，改一下就已经自动保存了） ----------
+        Button applyButton = new Button(this);
+        applyButton.setText("立即应用（一般不用点，改动已自动保存）");
+        applyButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                save();
+                applyNow("点击立即应用");
             }
         });
-        root.addView(save, new LinearLayout.LayoutParams(
+        root.addView(applyButton, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         Button reset = new Button(this);
@@ -158,7 +200,7 @@ public final class SettingsActivity extends Activity {
         reset.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 loadDefaults();
-                save();
+                applyNow("恢复默认");
             }
         });
         root.addView(reset, new LinearLayout.LayoutParams(
@@ -179,9 +221,80 @@ public final class SettingsActivity extends Activity {
         load();
     }
 
-    // ---------- 读取 / 保存 ----------
+    @Override
+    protected void onStop() {
+        super.onStop();
+        applyNow("离开设置页");
+    }
+
+    // ---------- 自动保存 ----------
+
+    /** 把当前控件的值写进偏好，并广播给输入法进程 */
+    private void applyNow(String reason) {
+        if (loading) {
+            return;
+        }
+        try {
+            prefs.edit()
+                    .putBoolean(BarConfig.KEY_ENABLED, enabledBox.isChecked())
+                    .putString(BarConfig.KEY_POSITION,
+                            radioIndex(positionGroup) == 0 ? BarConfig.POSITION_BOTTOM : BarConfig.POSITION_TOP)
+                    .putInt(BarConfig.KEY_EDGE_DISTANCE, edgeSlider.value())
+                    .putInt(BarConfig.KEY_SIDE_MARGIN, sideSlider.value())
+                    .putInt(BarConfig.KEY_TEXT_SIZE, textSizeSlider.value())
+                    .putInt(BarConfig.KEY_OPACITY, opacitySlider.value())
+                    .putString(BarConfig.KEY_STYLE,
+                            radioIndex(styleGroup) == 1 ? BarConfig.STYLE_PILL : BarConfig.STYLE_TEXT)
+                    .putString(BarConfig.KEY_LAYOUT,
+                            radioIndex(layoutGroup) == 1 ? BarConfig.LAYOUT_LEFT : BarConfig.LAYOUT_STRETCH)
+                    .putString(BarConfig.KEY_TEXT_COLOR, textColorBox.getText().toString().trim())
+                    .putString(BarConfig.KEY_PILL_BG, pillColorBox.getText().toString().trim())
+                    .putString(BarConfig.KEY_BAR_BG, barBgBox.getText().toString().trim())
+                    .putString(BarConfig.KEY_BUTTONS, buttonsBox.getText().toString())
+                    .apply();
+        } catch (Throwable t) {
+            RunLog.add("写入偏好失败(" + reason + "): " + t);
+            return;
+        }
+
+        BarConfig cfg = BarConfig.fromPrefs(prefs);
+        boolean sent = false;
+        try {
+            Intent intent = new Intent(BarConfig.ACTION_CONFIG_CHANGED);
+            intent.putExtras(cfg.toBundle());
+            sendBroadcast(intent);
+            sent = true;
+        } catch (Throwable t) {
+            RunLog.add("广播失败: " + t);
+        }
+        RunLog.add("已应用(" + reason + "): " + cfg.summary() + " 广播=" + sent);
+        updateStatus(cfg);
+        if (logView != null) {
+            logView.setText(RunLog.dump());
+        }
+    }
+
+    /** 文本框用：停手 0.6 秒后再保存，避免边打字边刷 */
+    private void scheduleApply(String reason) {
+        if (loading) {
+            return;
+        }
+        if (pendingTextApply != null) {
+            handler.removeCallbacks(pendingTextApply);
+        }
+        final String tag = reason;
+        pendingTextApply = new Runnable() {
+            public void run() {
+                applyNow(tag);
+            }
+        };
+        handler.postDelayed(pendingTextApply, 600);
+    }
+
+    // ---------- 读取 / 默认值 ----------
 
     private void load() {
+        loading = true;
         BarConfig cfg = BarConfig.fromPrefs(prefs);
         enabledBox.setChecked(cfg.enabled());
         edgeSlider.set(cfg.edgeDistanceDp());
@@ -196,9 +309,15 @@ public final class SettingsActivity extends Activity {
         barBgBox.setText(cfg.barBackgroundHex());
         buttonsBox.setText(cfg.buttonsRaw());
         RunLog.add("读取到已保存的配置: " + cfg.summary());
+        updateStatus(cfg);
+        if (logView != null) {
+            logView.setText(RunLog.dump());
+        }
+        loading = false;
     }
 
     private void loadDefaults() {
+        loading = true;
         enabledBox.setChecked(true);
         edgeSlider.set(BarConfig.DEF_EDGE_DISTANCE);
         sideSlider.set(BarConfig.DEF_SIDE_MARGIN);
@@ -211,41 +330,15 @@ public final class SettingsActivity extends Activity {
         pillColorBox.setText(BarConfig.DEF_PILL_BG);
         barBgBox.setText(BarConfig.DEF_BAR_BG);
         buttonsBox.setText(BarConfig.DEFAULT_BUTTONS);
+        loading = false;
     }
 
-    private void save() {
-        prefs.edit()
-                .putBoolean(BarConfig.KEY_ENABLED, enabledBox.isChecked())
-                .putString(BarConfig.KEY_POSITION,
-                        radioIndex(positionGroup) == 0 ? BarConfig.POSITION_BOTTOM : BarConfig.POSITION_TOP)
-                .putInt(BarConfig.KEY_EDGE_DISTANCE, edgeSlider.value())
-                .putInt(BarConfig.KEY_SIDE_MARGIN, sideSlider.value())
-                .putInt(BarConfig.KEY_TEXT_SIZE, textSizeSlider.value())
-                .putInt(BarConfig.KEY_OPACITY, opacitySlider.value())
-                .putString(BarConfig.KEY_STYLE,
-                        radioIndex(styleGroup) == 1 ? BarConfig.STYLE_PILL : BarConfig.STYLE_TEXT)
-                .putString(BarConfig.KEY_LAYOUT,
-                        radioIndex(layoutGroup) == 1 ? BarConfig.LAYOUT_LEFT : BarConfig.LAYOUT_STRETCH)
-                .putString(BarConfig.KEY_TEXT_COLOR, textColorBox.getText().toString().trim())
-                .putString(BarConfig.KEY_PILL_BG, pillColorBox.getText().toString().trim())
-                .putString(BarConfig.KEY_BAR_BG, barBgBox.getText().toString().trim())
-                .putString(BarConfig.KEY_BUTTONS, buttonsBox.getText().toString())
-                .apply();
-
-        // 把配置的数值本身推给输入法进程：不用切输入法，立刻生效
-        try {
-            BarConfig cfg = BarConfig.fromPrefs(prefs);
-            Intent intent = new Intent(BarConfig.ACTION_CONFIG_CHANGED);
-            intent.putExtras(cfg.toBundle());
-            sendBroadcast(intent);
-            RunLog.add("保存并广播: " + cfg.summary());
-        } catch (Throwable t) {
-            RunLog.add("广播失败: " + t);
+    private void updateStatus(BarConfig cfg) {
+        if (statusView == null) {
+            return;
         }
-        if (logView != null) {
-            logView.setText(RunLog.dump());
-        }
-        Toast.makeText(this, "已保存并即时生效", Toast.LENGTH_SHORT).show();
+        String time = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
+        statusView.setText("已自动保存并下发（" + time + "）：" + cfg.summary());
     }
 
     // ---------- 组件 ----------
@@ -316,6 +409,7 @@ public final class SettingsActivity extends Activity {
             }
 
             public void onStopTrackingTouch(SeekBar seekBar) {
+                applyNow("拖动滑块");   // 松手就保存并下发
             }
         });
         slider.set(value);
@@ -342,6 +436,11 @@ public final class SettingsActivity extends Activity {
                 group.check(radio.getId());
             }
         }
+        group.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            public void onCheckedChanged(RadioGroup group, int checkedId) {
+                applyNow("选择项");
+            }
+        });
         card.addView(group);
         return group;
     }
@@ -358,6 +457,17 @@ public final class SettingsActivity extends Activity {
         edit.setSingleLine(true);
         edit.setTextSize(14f);
         edit.setHint(def);
+        edit.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            public void afterTextChanged(Editable s) {
+                scheduleApply("颜色");
+            }
+        });
         card.addView(edit, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return edit;
@@ -389,15 +499,13 @@ public final class SettingsActivity extends Activity {
                 + "copy 复制 / cut 剪切 / paste 粘贴 / select_all 全选 / clear 清空输入框\n"
                 + "enter 回车 / delete 退格 / left 光标左移 / right 光标右移 / hide 收起键盘\n"
                 + "switch_ime 切换输入法 / insert_date 插入日期 / insert_time 插入时间\n"
-                + "settings 打开本设置页\n"
-                + "log 把输入法进程的运行日志复制到剪贴板（排查问题用）\n"
+                + "settings 打开本设置页 / log 复制输入法进程日志到剪贴板\n"
                 + "text 插入固定文字（第三列写内容）\n"
                 + "app 打开某个 App（第三列写包名） / url 打开网址（第三列写链接）\n\n"
                 + "菜单按钮（第二列写 menu）：\n"
                 + "第三列写菜单项，多项用 ; 分隔，每项是 文字=动作（也可以 文字=动作=参数）。\n"
                 + "例子：更多|menu|切输入法=switch_ime;插入日期=insert_date;打开设置=settings\n\n"
-                + "窗口位置说明：位置=键盘底部时，工具栏在键盘那排按键的下面；"
-                + "此时「底部距离」是它距键盘底边的高度。";
+                + "所有滑块和开关都是改完自动保存、即时生效，不需要点保存。";
     }
 
     /** 一行滑动条：标题 + 说明 + 右侧数值 */

@@ -61,7 +61,9 @@ final class BarHook {
         }
         try {
             module.hook(method).intercept(new XposedInterface.Hooker() {
-                public Object intercept(XposedInterface.Chain chain) {
+                // 注意：Hooker.intercept 的签名里带 throws Throwable（Chain.proceed() 会抛），
+                // 这里必须原样声明，否则编译不过。
+                public Object intercept(XposedInterface.Chain chain) throws Throwable {
                     Object result = chain.proceed();
                     try {
                         after.run(chain.getThisObject());

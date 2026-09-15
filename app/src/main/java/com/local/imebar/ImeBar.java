@@ -43,7 +43,7 @@ import java.util.List;
 final class ImeBar {
 
     private static final String TAG = "ImeBar";
-    private static final String VERSION = "0.9.0";
+    private static final String VERSION = "0.9.1";
     /** 按钮间距固定 8dp（原版没有这项设置，就不做成可调） */
     private static final int BUTTON_GAP_DP = 8;
     /** 拉取配置的最小间隔，避免频繁跨进程调用 */
@@ -314,7 +314,13 @@ final class ImeBar {
                             BarMenu.toggle((ViewGroup) decor, context, service, button, cfg);
                         }
                     } else {
-                        BarActions.run(service, button.action, button.arg);
+                        // 丢到下一轮消息循环再执行：在触摸事件里直接 startActivity，
+                        // 个别 ROM 会把这次启动忽略掉（原版 AI超级工具栏 也是这么写的）。
+                        v.post(new Runnable() {
+                            public void run() {
+                                BarActions.run(service, button.action, button.arg);
+                            }
+                        });
                     }
                 }
             });

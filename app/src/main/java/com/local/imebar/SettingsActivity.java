@@ -62,6 +62,11 @@ public final class SettingsActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(BarConfig.GROUP, MODE_PRIVATE);
+        // 记一笔"设置页起来了"：输入法进程发完 startActivity 会回查这个时间戳，
+        // 用来区分"打不开"和"系统把这次启动拦掉了"。
+        prefs.edit()
+                .putLong(ConfigProvider.KEY_SETTINGS_OPENED_AT, System.currentTimeMillis())
+                .apply();
         RunLog.add("打开设置页（模块 App 进程）");
 
         LinearLayout root = new LinearLayout(this);

@@ -111,8 +111,16 @@ final class BarMenu {
             row.setBackground(ripple());
             row.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    dismiss();
-                    BarActions.run(service, item.action, item.arg);
+                    RunLog.add("菜单项点击: " + item.label + " → " + item.action);
+                    // 先收起菜单，再把动作丢到下一轮消息循环执行：
+                    // 触摸事件里直接 startActivity，个别 ROM 会当成"触摸过程中的动作"忽略掉；
+                    // 原版 AI超级工具栏 也是这么做的（view.post）。这里跟着来。
+                    v.post(new Runnable() {
+                        public void run() {
+                            dismiss();
+                            BarActions.run(service, item.action, item.arg);
+                        }
+                    });
                 }
             });
             card.addView(row, new LinearLayout.LayoutParams(
@@ -130,6 +138,7 @@ final class BarMenu {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
         overlay = scrim;
+        RunLog.add("弹出菜单: " + button.label + "（" + items.size() + " 项）");
     }
 
     private static View makeDivider(Context context) {

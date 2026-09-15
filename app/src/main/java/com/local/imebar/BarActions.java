@@ -2,12 +2,12 @@ package com.local.imebar;
 
 import android.content.Context;
 import android.content.Intent;
+import android.inputmethodservice.InputMethodService;
 import android.net.Uri;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.inputmethod.InputConnection;
-import android.view.inputmethod.InputMethodService;
 
 /** 按钮动作。全部是本机操作，不发网络请求，不执行 shell。 */
 final class BarActions {

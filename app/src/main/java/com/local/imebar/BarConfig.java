@@ -257,37 +257,37 @@ public final class BarConfig {
         return list;
     }
 
+    /**
+     * 一个 JSON 对象 → 一个节点（按钮或菜单项，本来就是同一种东西）。
+     * label 没写就用 action 顶上，两个都空就丢掉这个节点。
+     * action 是 menu 时递归解析子菜单——子项里还能再套 menu，深度不限；
+     * 子菜单一条都没有的节点整个丢掉（点开一个空菜单没意义）。
+     */
     private static Button toButton(JSONObject obj) {
-        Item item = toItem(obj);
-        if (item == null) {
-            return null;
-        }
-        if (!"menu".equals(item.action)) {
-            return new Button(item.label, item.action, item.arg, null);
-        }
-        List<Item> items = toMenuItems(obj.optJSONArray("menu"));
-        // 菜单里一条都没有，这个按钮没意义
-        return items.isEmpty() ? null : new Button(item.label, item.action, item.arg, items);
-    }
-
-    /** 一个 JSON 对象 → 一条 label/action/arg。label 没写就用 action 顶上，都空返回 null */
-    private static Item toItem(JSONObject obj) {
         String label = field(obj, "label");
         String action = field(obj, "action");
         if (label.length() == 0) {
             label = action;
         }
-        return label.length() == 0 ? null : new Item(label, action, field(obj, "arg"));
+        if (label.length() == 0) {
+            return null;
+        }
+        if (!"menu".equals(action)) {
+            return new Button(label, action, field(obj, "arg"), null);
+        }
+        List<Button> items = toMenu(obj.optJSONArray("menu"));
+        return items.isEmpty() ? null : new Button(label, action, "", items);
     }
 
-    private static List<Item> toMenuItems(JSONArray array) {
-        List<Item> items = new ArrayList<Item>();
+    /** menu 数组 → 子节点列表（JSON 是树，不会循环引用，所以递归是安全的） */
+    private static List<Button> toMenu(JSONArray array) {
+        List<Button> items = new ArrayList<Button>();
         if (array == null) {
             return items;
         }
         for (int i = 0; i < array.length(); i++) {
             JSONObject obj = array.optJSONObject(i);
-            Item item = obj == null ? null : toItem(obj);
+            Button item = obj == null ? null : toButton(obj);
             if (item != null) {
                 items.add(item);
             }
@@ -348,30 +348,21 @@ public final class BarConfig {
         return value > max ? max : value;
     }
 
+    /**
+     * 一个按钮，或者一条菜单项——两者结构一样，所以菜单里放的就是 Button，可以任意层级嵌套。
+     */
     public static final class Button {
         public final String label;
         public final String action;
         public final String arg;
-        /** 只有 action 是 "menu" 时非空 */
-        public final List<Item> menuItems;
+        /** 只有 action 是 "menu" 时非空；里面还是 Button，能继续套菜单 */
+        public final List<Button> menuItems;
 
-        Button(String label, String action, String arg, List<Item> menuItems) {
+        Button(String label, String action, String arg, List<Button> menuItems) {
             this.label = label;
             this.action = action;
             this.arg = arg;
             this.menuItems = menuItems;
-        }
-    }
-
-    public static final class Item {
-        public final String label;
-        public final String action;
-        public final String arg;
-
-        Item(String label, String action, String arg) {
-            this.label = label;
-            this.action = action;
-            this.arg = arg;
         }
     }
 }

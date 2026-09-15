@@ -36,6 +36,7 @@ final class BarHook {
             // 键盘每次弹出
             hook(module, ims, "onStartInputView", new Class<?>[]{EditorInfo.class, boolean.class}, new After() {
                 public void run(Object service) {
+                    BarMenu.dismiss();
                     ImeBar.attach(service, cfg);
                 }
             });
@@ -46,6 +47,15 @@ final class BarHook {
                     ImeBar.attach(service, cfg);
                 }
             });
+
+            // 键盘收起时把菜单一起收掉，避免留下一个卡在上面的浮层
+            After dismissMenu = new After() {
+                public void run(Object service) {
+                    BarMenu.dismiss();
+                }
+            };
+            hook(module, ims, "onWindowHidden", new Class<?>[0], dismissMenu);
+            hook(module, ims, "onFinishInputView", new Class<?>[]{boolean.class}, dismissMenu);
 
             Log.i(TAG, "已在 " + pkg + " 中安装 hook");
         } catch (Throwable t) {

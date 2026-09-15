@@ -16,10 +16,15 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * 把一条按钮栏画到输入法窗口的最上方。
+ * 把一条"胶囊按钮栏"画到输入法窗口的最上方。
  *
  * 输入法窗口本身是个 Dialog（InputMethodService.getWindow()），
  * 我们把 View 加进它的 DecorView（一个 FrameLayout），gravity=TOP 就是"键盘上方"。
+ *
+ * 视觉目标：
+ *   - 整条栏默认全透明，让输入法自己的背景透出来（"没有存在感"）；
+ *   - 按钮是文字为主的胶囊（全圆角、浅色底、深色字），不画图标；
+ *   - 点普通按钮直接执行；点带菜单的按钮弹出居中卡片菜单。
  */
 final class ImeBar {
 
@@ -62,6 +67,7 @@ final class ImeBar {
             if (lastBar != null && lastBar.getParent() == root && signature.equals(lastSignature)) {
                 return; // 已经挂好且配置没变
             }
+            BarMenu.dismiss(); // 重建之前先收掉可能还开着的菜单
             removeBarFrom(root);
 
             // 关键：用 DecorView 的 Context 建 View，它带主题；直接用 Service 当 Context 会崩
@@ -100,53 +106,66 @@ final class ImeBar {
         lastSignature = null;
     }
 
-    private static View build(Context context, final InputMethodService service, final BarConfig cfg) {
+    private static View build(final Context context, final InputMethodService service, final BarConfig cfg) {
         float density = context.getResources().getDisplayMetrics().density;
+        int barHeight = (int) (cfg.heightDp() * density + 0.5f);
+
+        // 胶囊高度：占满栏高减去上下留白
+        int pillHeight = Math.max((int) (30 * density + 0.5f), barHeight - dp(density, 10));
 
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        int rowPad = dp(density, 6);
-        row.setPadding(rowPad, 0, rowPad, 0);
+        int sidePad = dp(density, 8);
+        row.setPadding(sidePad, 0, sidePad, 0);
 
         for (final BarConfig.Button button : cfg.buttons()) {
-            TextView item = new TextView(context);
-            item.setText(button.label);
-            item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
-            item.setTextColor(cfg.textColor());
-            item.setGravity(Gravity.CENTER);
-            item.setSingleLine(true);
-            int hPad = dp(density, 10);
-            int vPad = dp(density, 4);
-            item.setPadding(hPad, vPad, hPad, vPad);
-            item.setBackground(chipBackground());
+            TextView pill = new TextView(context);
+            pill.setText(button.label);
+            pill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+            pill.setTextColor(cfg.textColor());
+            pill.setGravity(Gravity.CENTER);
+            pill.setSingleLine(true);
+            pill.setIncludeFontPadding(false);
+            int hPad = dp(density, 16);
+            pill.setPadding(hPad, 0, hPad, 0);
+            pill.setBackground(pillBackground(cfg.pillColor(), pillHeight / 2f));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.rightMargin = dp(density, 6);
-            item.setLayoutParams(lp);
-            item.setClickable(true);
-            item.setOnClickListener(new View.OnClickListener() {
+                    LinearLayout.LayoutParams.WRAP_CONTENT, pillHeight);
+            lp.rightMargin = dp(density, 8);
+            pill.setLayoutParams(lp);
+            pill.setClickable(true);
+            pill.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    BarActions.run(service, button.action, button.arg);
+                    if (button.menuItems != null && !button.menuItems.isEmpty()) {
+                        View decor = v.getRootView();
+                        if (decor instanceof ViewGroup) {
+                            BarMenu.toggle((ViewGroup) decor, context, service, button, cfg);
+                        }
+                    } else {
+                        BarActions.run(service, button.action, button.arg);
+                    }
                 }
             });
-            row.addView(item);
+            row.addView(pill);
         }
 
         HorizontalScrollView scroll = new HorizontalScrollView(context);
         scroll.setHorizontalScrollBarEnabled(false);
-        scroll.setBackgroundColor(cfg.backgroundColor());
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(cfg.barBackgroundColor());
         scroll.addView(row, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
         return scroll;
     }
 
-    private static GradientDrawable chipBackground() {
+    /** 全圆角胶囊：圆角半径取高度的一半 */
+    private static GradientDrawable pillBackground(int color, float radiusPx) {
         GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(0x33FFFFFF);
-        drawable.setCornerRadius(14f);
+        drawable.setShape(GradientDrawable.RECTANGLE);
+        drawable.setColor(color);
+        drawable.setCornerRadius(radiusPx);
         return drawable;
     }
 

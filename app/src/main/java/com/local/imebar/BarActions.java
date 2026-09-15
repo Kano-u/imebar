@@ -1,13 +1,20 @@
 package com.local.imebar;
 
+import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
 import android.inputmethodservice.InputMethodService;
 import android.net.Uri;
+import android.os.IBinder;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 /** 按钮动作。全部是本机操作，不发网络请求，不执行 shell。 */
 final class BarActions {
@@ -42,6 +49,14 @@ final class BarActions {
                 sendKey(service, KeyEvent.KEYCODE_DPAD_RIGHT);
             } else if ("hide".equals(action)) {
                 service.requestHideSelf(0);
+            } else if ("switch_ime".equals(action)) {
+                switchInputMethod(service);
+            } else if ("insert_date".equals(action)) {
+                commitText(service, new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date()));
+            } else if ("insert_time".equals(action)) {
+                commitText(service, new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date()));
+            } else if ("settings".equals(action)) {
+                openSettings(service);
             } else if ("text".equals(action)) {
                 commitText(service, arg == null ? "" : arg);
             } else if ("app".equals(action)) {
@@ -112,5 +127,41 @@ final class BarActions {
         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         context.startActivity(intent);
+    }
+
+    /** 切到下一个输入法；失败就退化成系统输入法选择器 */
+    private static void switchInputMethod(InputMethodService service) {
+        try {
+            InputMethodManager manager =
+                    (InputMethodManager) service.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (manager != null) {
+                Dialog dialog = service.getWindow();
+                if (dialog != null && dialog.getWindow() != null) {
+                    IBinder token = dialog.getWindow().getDecorView().getWindowToken();
+                    if (token != null && manager.switchToNextInputMethod(token, false)) {
+                        return;
+                    }
+                }
+                manager.showInputMethodPicker();
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "切换输入法失败", t);
+        }
+    }
+
+    /**
+     * 打开本模块的设置页。
+     * 注意：这里运行在输入法进程里，service.getPackageName() 是输入法的包名，
+     * 所以必须用写死的模块包名。
+     */
+    private static void openSettings(InputMethodService service) {
+        try {
+            Intent intent = new Intent();
+            intent.setClassName(BarConfig.MODULE_PKG, "com.local.imebar.SettingsActivity");
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            service.startActivity(intent);
+        } catch (Throwable t) {
+            Log.w(TAG, "打开设置页失败", t);
+        }
     }
 }

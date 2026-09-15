@@ -32,15 +32,14 @@ import android.widget.Toast;
  *   - 文本框（颜色 / 按钮）：停止输入 0.6 秒后保存；离开页面时再补一次
  * 每次保存都会写偏好 + 广播配置数值给输入法进程。
  *
- * 界面走简约风：白底、黑字，浅绿只出现在对勾、数值条和按钮上（配色见 res/values/colors.xml）。
+ * 界面走简约风：白色圆角卡片 + 黑字，卡片之间留出间隙；
+ * 浅绿只出现在对勾、数值条和按钮上（配色见 res/values/colors.xml）。
  */
 public final class SettingsActivity extends Activity {
 
     private SharedPreferences prefs;
     /** 正在把已保存的值填进控件时，不要触发自动保存 */
     private boolean loading = true;
-    /** 第一节前面不画分隔线 */
-    private boolean firstSection = true;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable pendingTextApply;
@@ -66,7 +65,7 @@ public final class SettingsActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(12);
-        root.setPadding(pad, dp(8), pad, dp(24));
+        root.setPadding(pad, dp(10), pad, dp(20));
 
         TextView title = new TextView(this);
         title.setText(R.string.app_name);
@@ -353,33 +352,27 @@ public final class SettingsActivity extends Activity {
     // ---------- 组件 ----------
 
     /**
-     * 一节内容。简约风：不画卡片底，白底黑字，节与节之间用一条细灰线分开。
+     * 一节内容 = 一张白色圆角卡片（18dp 圆角、16dp 内边距，卡片之间 12dp 间隙，左右各留 12dp）。
+     * 标题用黑字不加色——浅绿只留给对勾、数值条和按钮。
      */
     private LinearLayout card(LinearLayout parent, String title) {
-        if (!firstSection) {
-            parent.addView(divider());
-        }
-        firstSection = false;
-
-        LinearLayout section = new LinearLayout(this);
-        section.setOrientation(LinearLayout.VERTICAL);
-        section.setPadding(dp(2), dp(14), dp(2), dp(14));
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(roundRect(color(R.color.card_bg), dp(18)));
+        int p = dp(16);
+        card.setPadding(p, p, p, p);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(12);
+        card.setLayoutParams(lp);
 
         TextView head = new TextView(this);
         head.setText(title);
         head.setTextSize(17f);
         head.setTextColor(color(R.color.text_main));
-        section.addView(head);
-        parent.addView(section);
-        return section;
-    }
-
-    private View divider() {
-        View line = new View(this);
-        line.setBackgroundColor(color(R.color.line));
-        line.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
-        return line;
+        card.addView(head);
+        parent.addView(card);
+        return card;
     }
 
     private TextView hint(String text) {

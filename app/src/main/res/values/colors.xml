@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  简约风：绝大部分是白底黑字，浅绿只出现在三处——对勾（复选框）、可拖动数值条（SeekBar）、
-  按钮。颜色只写在这里，别在代码里散落色值。
+  简约风：卡片是纯白 + 黑字，页面是很浅的灰底（这样白卡片才看得出来、左右也留得出间隙）；
+  浅绿只出现在三处——对勾（复选框）、可拖动数值条（SeekBar）、按钮。
+  颜色只写在这里，别在代码里散落色值。
 -->
 <resources>
-    <color name="page_bg">#FFFFFFFF</color>
+    <color name="page_bg">#FFF2F2F7</color>
+    <color name="card_bg">#FFFFFFFF</color>
     <color name="green_accent">#FF66BB6A</color>
     <color name="green_soft">#FFE8F5E9</color>
     <color name="green_ripple">#3366BB6A</color>
     <color name="text_main">#FF1A1A1A</color>
     <color name="text_hint">#FF8A8A8E</color>
-    <!-- 节与节之间的细线，以及日志/结果框的中性浅灰底 -->
-    <color name="line">#FFF0F0F0</color>
+    <!-- 日志/执行结果框的中性浅灰底 -->
     <color name="box_bg">#FFF5F5F6</color>
 </resources>

@@ -1,0 +1,6 @@
+# libxposed 模块声明
+minApiVersion=101
+targetApiVersion=102
+# 作用域由用户在 LSPosed 里自己勾（只勾输入法即可）
+staticScope=false
+autoHotReload=false

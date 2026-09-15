@@ -1,0 +1,174 @@
+# 简易输入法工具栏（自研 Xposed 模块）
+
+一个**自己写的**输入法工具栏模块：在键盘上方加一条可自定义的按钮栏。
+参考了 `AI超级工具栏 5.0.5` 的实现思路（把 View 挂到输入法窗口上、配置用远程偏好读），
+但**代码全部重写**，并且去掉了原版所有高风险的部分。
+
+适用：Android 8.0+（minSdk 27），需要 **LSPosed / libxposed API 101+** 的 Xposed 环境。
+
+---
+
+## 与原版的区别（为什么更放心）
+
+| 项目 | 原版 AI超级工具栏 | 本模块 |
+|---|---|---|
+| 联网 | 必须联网登录（`http://114.55.33.97/api`，明文 HTTP 传密码） | **没有 INTERNET 权限**，一个字节都不发 |
+| 授权 | 账号 + 设备绑定 + 服务端可远程关掉 | 无授权，装完就能用 |
+| 剪贴板 | 记录剪贴板历史，另有一个**导出且不校验调用方**的 Provider | 不记录、不落盘 |
+| root / shell | 有 `su` 执行通道 | 完全没有 |
+| 对外接口 | 3 个导出组件（广播/服务/Provider） | **0 个导出组件**（只有一个 Xposed 框架自带的 Provider） |
+| 权限 | 悬浮窗、所有文件、查询所有应用、联网… | **零权限** |
+| 代码 | R8 混淆 + 8MB dex + 13KB 原生库 | 6 个 Java 文件，无混淆、无原生库 |
+
+> 注意：任何 hook 输入法的模块，理论上都能看到你输入的内容。**本模块自己不做任何采集**，
+> 但你还是应该只在自己可控的设备上用，并且按需勾选作用域（只勾你日常用的那一个输入法）。
+
+---
+
+## 一、快速开始（全程不用在本机装 Android 环境）
+
+### 1. 把代码推到 GitHub
+
+在 GitHub 网页上新建一个空仓库（例如 `imebar`，**不要**勾选 Add README / .gitignore），
+然后在本机这个目录下执行（把 `你的用户名` 换成你的 GitHub 用户名）：
+
+```bash
+git init
+git add .
+git commit -m "简易输入法工具栏 v0.1.0"
+git branch -M main
+git remote add origin https://github.com/你的用户名/imebar.git
+git push -u origin main
+```
+
+### 2. 等云端自动编译
+
+推送完成后，打开仓库的 **Actions** 标签页：
+
+* 会自动跑一个叫 `build-apk` 的任务（大约 2~4 分钟，第一次要下载依赖会慢一点）；
+* 跑完后点进这次运行，页面底部 **Artifacts** 里下载 `imebar-apk`，里面有两个 APK：
+  * `app-debug.apk` —— 调试包
+  * `app-release.apk` —— 用 debug 签名打的正式包（体积略小，用它就行）
+
+如果想手动重跑：Actions → 左侧 `build-apk` → 右侧 `Run workflow`。
+
+### 3. 安装并启用
+
+1. 把 APK 传到手机安装（会提示"未知来源"，允许即可）；
+2. 打开 **LSPosed 管理器** → 模块 → 找到「简易输入法工具栏」→ **启用**；
+3. 点 **作用域** → 只勾选你实际在用的输入法（例如"豆包输入法""搜狗输入法""Gboard"），
+   然后 **重启输入法进程**（最省事的办法：切一次输入法，或者重启手机）；
+4. 打开本模块的桌面图标（设置页）→ 按需改按钮 → 保存 → 切一次输入法生效。
+
+---
+
+## 二、配置说明
+
+按钮格式：**一行一个**，用竖线分隔：`显示文字|动作|参数`
+
+设置页默认给的是：
+
+```
+复制|copy
+剪切|cut
+粘贴|paste
+全选|select_all
+清空|clear
+回车|enter
+收起键盘|hide
+```
+
+### 可用动作
+
+| 动作 | 作用 | 需要参数 |
+|---|---|---|
+| `copy` | 复制选中内容 | 无 |
+| `cut` | 剪切选中内容 | 无 |
+| `paste` | 粘贴 | 无 |
+| `select_all` | 全选当前输入框 | 无 |
+| `clear` | 清空当前输入框 | 无 |
+| `enter` | 回车 / 发送 | 无 |
+| `delete` | 退格 | 无 |
+| `left` / `right` | 光标左移 / 右移 | 无 |
+| `hide` | 收起键盘 | 无 |
+| `text` | 插入一段固定文字 | 第三列写文字 |
+| `app` | 打开某个 App | 第三列写包名 |
+| `url` | 用浏览器打开链接 | 第三列写网址 |
+
+例子：
+
+```
+我的地址|text|广东省深圳市南山区xx路1号
+打开微信|app|com.tencent.mm
+搜索|url|https://www.bing.com
+```
+
+其它可调项：工具栏高度（24~96 dp）、背景色、文字颜色（`#AARRGGBB`）。
+
+---
+
+## 三、出问题怎么办
+
+### 工具栏没出现
+
+1. 先确认 LSPosed 里模块**已启用**、作用域**勾了当前输入法**，并且 **重启过输入法进程**；
+2. 用电脑连手机看日志（最有用的一招）：
+
+```bash
+adb logcat -c && adb logcat -s ImeBar
+```
+
+然后切出键盘，看有没有出现：
+
+```
+I ImeBar: 模块已加载, 进程=com.xxx.ime
+I ImeBar: 已 hook android.inputmethodservice.InputMethodService#onStartInputView
+I ImeBar: 工具栏已挂载, 按钮数=7
+```
+
+* 只有第一行、没有后面两行 → 作用域没勾对，或者输入法进程没重启；
+* 有"工具栏已挂载"但屏幕上看不到 → 换个输入法试试（个别输入法把窗口高度写死了，见下面"已知限制"）。
+
+### 按钮点了没反应
+
+有些输入框（尤其是密码框、某些 App 自绘的输入框）不支持 `copy/paste/select_all`，
+这时日志里会出现"这个输入框不支持"，属于正常现象。`text`（插入固定文字）几乎都能用。
+
+---
+
+## 四、已知限制与后续可做
+
+**当前版本（v0.1.0）**
+
+* 只改"键盘上方那一条"，不碰各家输入法自己的界面；
+* 用的是 debug 签名 —— 每次云端编译出来的签名都不同，**换新包必须先卸载旧包**（想稳定升级见下）；
+* 个别输入法窗口高度固定，工具栏可能被裁掉（换输入法或告诉我，我改成悬浮窗方案）。
+
+**想让我继续加的功能**（说要哪个就行）
+
+1. **固定签名**：把 keystore 放进 GitHub Secrets，之后所有构建用同一个签名，可以直接覆盖安装；
+2. **图形化按钮编辑**：不用手写 `文字|动作|参数`，改成列表 + 下拉选动作；
+3. **App 选择器**：点一下列出已安装应用让你选，自动填包名；
+4. **多页 / 长按菜单**：像原版那样一页放不下就翻页、长按出二级菜单；
+5. **常用语面板**：键盘上方弹出你自己的常用语列表（纯本地，不记录剪贴板历史）；
+6. **AI 调用**：自己填 API Key 做润色/翻译（这样就涉及联网，会单独加 INTERNET 权限并说明）。
+
+---
+
+## 五、技术备注
+
+* 依赖：`compileOnly io.github.libxposed:api:102.0.0`（运行时由框架提供，不打进 APK）+
+  `implementation io.github.libxposed:service:102.0.0`（提供 `XposedProvider`，远程配置用）；
+* 模块声明：`app/src/main/resources/META-INF/xposed/module.prop`（`minApiVersion=101`）+
+  `java_init.list`（入口类 `com.local.imebar.BarModule`）；
+* 远程配置：设置页写 `SharedPreferences("config")`，输入法进程用
+  `XposedModule.getRemotePreferences("config")` 读，两条路都走 `XposedProvider`，不需要任何权限；
+* 工具栏挂载点：`InputMethodService.getWindow().getWindow().getDecorView()`，
+  用 `FrameLayout.LayoutParams(gravity = TOP)` 加进去 —— 就是"键盘上方"；
+  建 View 时必须用 **DecorView 的 Context**（带主题），直接用 Service 当 Context 会崩；
+* 构建：AGP 8.7.3 / Gradle 8.11.1 / JDK 17 / compileSdk 35，全部由 GitHub Actions 提供。
+
+## 六、免责声明
+
+个人自用研究项目，不保证任何可用性。请只在自己的设备上使用，
+不要用于绕过他人产品的授权，也不要把改过的商业软件二次分发。

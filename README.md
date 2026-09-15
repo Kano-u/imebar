@@ -121,20 +121,27 @@ libxposed 的远程配置是**内存快照**，创建之后不会自己更新，
 
 ## 三、配置说明
 
-按钮格式：**一行一个**，用竖线分隔：`显示文字|动作|参数`
+按钮配置是 **JSON 数组**：一个元素一个按钮，字段是 `label`（显示文字）、`action`（动作）、
+`arg`（参数，可省）、`menu`（只有菜单按钮用）。整行以 `//` 开头是注释。
+
+> 从 0.15.0 起只认 JSON。旧的 `显示文字|动作|参数` 竖线格式**不再支持**：升级后如果存的还是旧格式，
+> 会自动改用默认按钮，并且设置页里直接显示默认 JSON，重新编辑保存即可。
 
 设置页默认给的是：
 
 ```
-复制|copy
-粘贴|paste
-全选|select_all
-收起键盘|hide
-复制日志|log
-# 截屏|adb|screencap -p /sdcard/imebar.png
+[
+  {"label": "复制", "action": "copy"},
+  {"label": "粘贴", "action": "paste"},
+  {"label": "全选", "action": "select_all"},
+  {"label": "收起键盘", "action": "hide"},
+  {"label": "复制日志", "action": "log"}
+  // {"label": "截屏", "action": "adb", "arg": "screencap -p /sdcard/imebar.png"}
+]
 ```
 
-最后一行是注释（`#` 开头会被忽略），要用的时候把 `#` 去掉即可。
+最后一行是注释（`//` 开头会被忽略），要用的时候把 `//` 去掉即可。
+`label` 不写就用 `action` 顶上；认不出来的字段会被忽略，所以可以放心往后加东西。
 
 ### 可用动作
 
@@ -149,19 +156,21 @@ libxposed 的远程配置是**内存快照**，创建之后不会自己更新，
 | `delete` | 退格 | 无 |
 | `left` / `right` | 光标左移 / 右移 | 无 |
 | `hide` | 收起键盘 | 无 |
-| `text` | 插入一段固定文字 | 第三列写文字 |
-| `app` | 打开某个 App | 第三列写包名 |
-| `url` | 用浏览器打开链接 | 第三列写网址 |
-| `adb` | 跑一条 shell 命令（**需要 root**） | 第三列写命令 |
+| `text` | 插入一段固定文字 | `arg` 写文字 |
+| `app` | 打开某个 App | `arg` 写包名 |
+| `url` | 用浏览器打开链接 | `arg` 写网址 |
+| `adb` | 跑一条 shell 命令（**需要 root**） | `arg` 写命令 |
 | `log` | 把输入法进程的运行日志复制到剪贴板 | 无 |
 
 例子：
 
 ```
-我的地址|text|广东省深圳市南山区xx路1号
-打开微信|app|com.tencent.mm
-搜索|url|https://www.bing.com
-截屏|adb|screencap -p /sdcard/imebar.png
+[
+  {"label": "我的地址", "action": "text", "arg": "广东省深圳市南山区xx路1号"},
+  {"label": "打开微信", "action": "app", "arg": "com.tencent.mm"},
+  {"label": "搜索", "action": "url", "arg": "https://www.bing.com"},
+  {"label": "截屏", "action": "adb", "arg": "screencap -p /sdcard/imebar.png"}
+]
 ```
 
 配色项支持 `#AARRGGBB` 写法（例如 `#80202124` 是半透明深灰）。
@@ -170,13 +179,19 @@ libxposed 的远程配置是**内存快照**，创建之后不会自己更新，
 
 ### 菜单按钮（弹出卡片菜单）
 
-第二列写 `menu`，第三列写菜单项；多项用 `;` 分隔，每项格式是 `文字=动作`（也可以 `文字=动作=参数`）。
+`action` 写 `menu`，子项放在 `menu` 数组里，子项结构和普通按钮一样：
 
 ```
-更多|menu|复制=copy;清空=clear;截屏=adb=screencap -p /sdcard/imebar.png
+[
+  {"label": "更多", "action": "menu", "menu": [
+    {"label": "复制", "action": "copy"},
+    {"label": "清空", "action": "clear"},
+    {"label": "截屏", "action": "adb", "arg": "screencap -p /sdcard/imebar.png"}
+  ]}
+]
 ```
 
-效果就是点一下「更多」，键盘中间弹出一张浅色圆角卡片，条目之间有分隔线；点空白处收起。
+效果就是点一下「更多」，**在那个按钮正上方**弹出一张白色圆角卡片，条目之间有分隔线；点空白处收起。
 
 ---
 

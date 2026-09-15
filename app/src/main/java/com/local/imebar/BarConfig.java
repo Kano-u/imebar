@@ -4,6 +4,9 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,16 +58,18 @@ public final class BarConfig {
     public static final String DEF_BAR_BG = "#00000000";
 
     /**
-     * 默认按钮：一行一个 `显示文字|动作|参数`。
-     * 以 # 开头的行是注释、会被忽略（最后那行是 ADB 命令的写法示例，要用的时候去掉 # 即可）。
+     * 默认按钮：JSON 数组。字段是 label（显示文字）/ action（动作）/ arg（可选参数）/ menu（菜单子项）。
+     * 整行 // 开头是注释（JSON 本身不支持注释，解析前会先剔除），最后一行就是 adb 的示例。
      */
     public static final String DEFAULT_BUTTONS =
-            "复制|copy\n"
-                    + "粘贴|paste\n"
-                    + "全选|select_all\n"
-                    + "收起键盘|hide\n"
-                    + "复制日志|log\n"
-                    + "# 截屏|adb|screencap -p /sdcard/imebar.png";
+            "[\n"
+                    + "  {\"label\": \"复制\", \"action\": \"copy\"},\n"
+                    + "  {\"label\": \"粘贴\", \"action\": \"paste\"},\n"
+                    + "  {\"label\": \"全选\", \"action\": \"select_all\"},\n"
+                    + "  {\"label\": \"收起键盘\", \"action\": \"hide\"},\n"
+                    + "  {\"label\": \"复制日志\", \"action\": \"log\"}\n"
+                    + "  // {\"label\": \"截屏\", \"action\": \"adb\", \"arg\": \"screencap -p /sdcard/imebar.png\"}\n"
+                    + "]";
 
     private final boolean enabled;
     private final int edgeDistance;
@@ -196,55 +201,99 @@ public final class BarConfig {
     /** 一行摘要，写日志用 */
     public String summary() {
         return "距离" + edgeDistance + " 边距" + sideMargin + " 字号" + textSize
-                + " 透明度" + opacity + " 按钮=[" + buttonsRaw.replace('\n', '/') + "]";
+                + " 透明度" + opacity + " 按钮数=" + buttons.size();
     }
 
     // ---------- 解析 ----------
 
+    /**
+     * 解析按钮配置（JSON 数组）。
+     * 解析失败或者一个按钮都没有，就退回默认按钮——这段代码也在输入法进程里跑，
+     * 宁可显示默认按钮，也不能让工具栏空着或者抛异常出来。
+     */
     private static List<Button> parseButtons(String raw) {
-        List<Button> list = new ArrayList<Button>();
+        List<Button> buttons = parseJson(stripCommentLines(raw));
+        if (!buttons.isEmpty()) {
+            return buttons;
+        }
+        RunLog.add("按钮配置不是合法 JSON（或没有按钮），已改用默认按钮");
+        return parseJson(stripCommentLines(DEFAULT_BUTTONS));
+    }
+
+    /** 整行以 // 开头的是注释：JSON 不支持注释，默认值里那条 adb 示例就是这么写的 */
+    private static String stripCommentLines(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        StringBuilder text = new StringBuilder();
         for (String line : raw.split("\n")) {
-            if (line == null) {
+            if (line == null || line.trim().startsWith("//")) {
                 continue;
             }
-            String text = line.trim();
-            if (text.length() == 0 || text.startsWith("#")) {
-                continue;
+            text.append(line).append('\n');
+        }
+        return text.toString();
+    }
+
+    /** @return 解析出来的按钮；出任何问题都返回空列表（不往外抛） */
+    private static List<Button> parseJson(String json) {
+        List<Button> list = new ArrayList<Button>();
+        String text = json == null ? "" : json.trim();
+        if (text.length() == 0) {
+            return list;
+        }
+        try {
+            JSONArray array = new JSONArray(text);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject obj = array.optJSONObject(i);
+                if (obj == null) {
+                    continue;   // 不是对象的元素直接跳过
+                }
+                Button button = toButton(obj);
+                if (button != null) {
+                    list.add(button);
+                }
             }
-            String[] parts = text.split("\\|", 3);
-            String label = parts[0].trim();
-            String action = parts.length > 1 ? parts[1].trim() : "";
-            String arg = parts.length > 2 ? parts[2].trim() : "";
-            if (label.length() == 0) {
-                label = action;
-            }
-            if (label.length() == 0) {
-                continue;
-            }
-            List<Item> items = "menu".equals(action) ? parseMenu(arg) : null;
-            list.add(new Button(label, action, arg, items));
+        } catch (Throwable t) {
+            RunLog.add("按钮 JSON 解析失败: " + t);
+            list.clear();
         }
         return list;
     }
 
-    /** 菜单按钮的第三列：`文字=动作`，多项用 ; 分隔 */
-    private static List<Item> parseMenu(String raw) {
+    private static Button toButton(JSONObject obj) {
+        String label = field(obj, "label");
+        String action = field(obj, "action");
+        String arg = field(obj, "arg");
+        if (label.length() == 0) {
+            label = action;   // 没写显示文字就拿动作名顶上
+        }
+        if (label.length() == 0) {
+            return null;
+        }
+        if (!"menu".equals(action)) {
+            return new Button(label, action, arg, null);
+        }
+        List<Item> items = toMenuItems(obj.optJSONArray("menu"));
+        if (items.isEmpty()) {
+            return null;   // 菜单里一条都没有，这个按钮没意义
+        }
+        return new Button(label, action, arg, items);
+    }
+
+    private static List<Item> toMenuItems(JSONArray array) {
         List<Item> items = new ArrayList<Item>();
-        if (raw == null) {
+        if (array == null) {
             return items;
         }
-        for (String part : raw.split(";")) {
-            if (part == null) {
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject obj = array.optJSONObject(i);
+            if (obj == null) {
                 continue;
             }
-            String text = part.trim();
-            if (text.length() == 0) {
-                continue;
-            }
-            String[] pieces = text.split("=", 3);
-            String label = pieces[0].trim();
-            String action = pieces.length > 1 ? pieces[1].trim() : "";
-            String arg = pieces.length > 2 ? pieces[2].trim() : "";
+            String label = field(obj, "label");
+            String action = field(obj, "action");
+            String arg = field(obj, "arg");
             if (label.length() == 0) {
                 label = action;
             }
@@ -254,6 +303,12 @@ public final class BarConfig {
             items.add(new Item(label, action, arg));
         }
         return items;
+    }
+
+    /** 取一个字符串字段：未知字段不管，缺字段也不报错 */
+    private static String field(JSONObject obj, String key) {
+        String value = obj.optString(key, "");
+        return value == null ? "" : value.trim();
     }
 
     // ---------- 小工具 ----------

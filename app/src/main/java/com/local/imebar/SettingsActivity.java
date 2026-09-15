@@ -94,7 +94,9 @@ public final class SettingsActivity extends Activity {
 
         // ---------- 按钮 ----------
         LinearLayout buttons = card(root, "按钮");
-        buttons.addView(hint("一行一个：显示文字|动作|参数。以 # 开头的行是注释，会被忽略。"));
+        buttons.addView(hint("JSON 数组，一个元素一个按钮："
+                + "{\"label\":\"显示文字\",\"action\":\"动作\",\"arg\":\"参数\"}。"
+                + "菜单按钮用 \"action\":\"menu\" + \"menu\":[...] 子数组。整行 // 开头是注释。"));
 
         buttonsBox = outlinedEdit(true);
         LinearLayout.LayoutParams boxParams = new LinearLayout.LayoutParams(
@@ -233,7 +235,14 @@ public final class SettingsActivity extends Activity {
         opacitySlider.set(cfg.opacityPercent());
         textColorBox.setText(cfg.textColorHex());
         barBgBox.setText(cfg.barBackgroundHex());
-        buttonsBox.setText(cfg.buttonsRaw());
+        String buttons = cfg.buttonsRaw();
+        if (!buttons.trim().startsWith("[")) {
+            // 旧版是「显示文字|动作|参数」这种竖线格式，本版本不再支持：
+            // 直接把默认值（JSON）填进输入框，让界面看到的就是实际生效的那份
+            RunLog.add("按钮配置是旧格式，已填成默认 JSON（点「保存」写回）");
+            buttons = BarConfig.DEFAULT_BUTTONS;
+        }
+        buttonsBox.setText(buttons);
         RunLog.add("读取到已保存的配置: " + cfg.summary());
         refreshLog();
     }
@@ -462,13 +471,24 @@ public final class SettingsActivity extends Activity {
     }
 
     private String helpText() {
-        return "可用动作（第二列）：\n"
+        return "可用动作（action 字段）：\n"
                 + "copy 复制 / cut 剪切 / paste 粘贴 / select_all 全选 / clear 清空输入框\n"
                 + "enter 回车 / delete 退格 / left 光标左移 / right 光标右移 / hide 收起键盘\n"
-                + "text 插入固定文字（第三列写内容）\n"
-                + "app 打开某个 App（第三列写包名） / url 打开网址（第三列写链接）\n"
-                + "adb 执行 shell 命令（第三列写命令，需要 root） / log 复制输入法日志\n\n"
-                + "菜单按钮：第二列写 menu，第三列写 文字=动作，多项用 ; 分隔。\n"
+                + "text 插入固定文字（arg 写内容）\n"
+                + "app 打开某个 App（arg 写包名） / url 打开网址（arg 写链接）\n"
+                + "adb 执行 shell 命令（arg 写命令，需要 root） / log 复制输入法日志\n\n"
+                + "字段：label 显示文字（不写就用 action 顶上）、action 动作、arg 参数（可省）。\n"
+                + "菜单按钮：\"action\":\"menu\"，子项放 \"menu\":[{\"label\":\"剪切\",\"action\":\"cut\"}]。\n"
+                + "未知字段会被忽略，随便扩。\n\n"
+                + "例子：\n"
+                + "[\n"
+                + "  {\"label\": \"复制\", \"action\": \"copy\"},\n"
+                + "  {\"label\": \"插入地址\", \"action\": \"text\", \"arg\": \"广东省深圳市\"},\n"
+                + "  {\"label\": \"更多\", \"action\": \"menu\", \"menu\": [\n"
+                + "    {\"label\": \"截屏\", \"action\": \"adb\", \"arg\": \"screencap -p /sdcard/1.png\"},\n"
+                + "    {\"label\": \"收起键盘\", \"action\": \"hide\"}\n"
+                + "  ]}\n"
+                + "]\n\n"
                 + "改完点下面的「保存」生效。";
     }
 

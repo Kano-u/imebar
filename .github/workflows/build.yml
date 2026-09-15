@@ -24,6 +24,23 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      # 把仓库 Secrets 里的签名密钥还原成文件，后面 Gradle 用环境变量读它。
+      # 没配 Secret 时自动跳过，release 会用 debug 签名（一样能装，但不能覆盖升级）。
+      - name: 配置固定签名
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+            {
+              echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks"
+              echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}"
+              echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}"
+              echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}"
+            } >> "$GITHUB_ENV"
+            echo "已启用固定签名"
+          else
+            echo "未配置 KEYSTORE_BASE64，改用 debug 签名"
+          fi
+
       - name: 依赖源自检（失败时方便定位）
         continue-on-error: true
         run: |

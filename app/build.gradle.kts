@@ -2,6 +2,10 @@ plugins {
     id("com.android.application")
 }
 
+// 固定签名：CI 里通过环境变量把 keystore 传进来（GitHub Secrets）。
+// 本地没配这些环境变量时，自动退回 debug 签名，保证本地也能编译。
+val fixedKeystore: String = System.getenv("KEYSTORE_PATH") ?: ""
+
 android {
     namespace = "com.local.imebar"
     compileSdk = 35
@@ -14,12 +18,27 @@ android {
         versionName = "0.2.0"
     }
 
+    signingConfigs {
+        if (fixedKeystore.isNotEmpty()) {
+            create("fixed") {
+                storeFile = file(fixedKeystore)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             // 个人自用：不混淆，方便出问题时看堆栈
             isMinifyEnabled = false
-            // 用 debug 签名，保证 release 包也能直接装（后面可换成自己的 keystore）
-            signingConfig = signingConfigs.getByName("debug")
+            // 有固定密钥就用固定密钥（版本之间可以互相覆盖安装）；没有就用 debug 签名
+            signingConfig = if (fixedKeystore.isNotEmpty()) {
+                signingConfigs.getByName("fixed")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

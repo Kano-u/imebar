@@ -1,6 +1,8 @@
 *.iml
 .gradle/
 .idea/
+# 其它 AI/编辑器工具的计划与缓存目录，不进版本库
+.trae/
 build/
 local.properties
 captures/

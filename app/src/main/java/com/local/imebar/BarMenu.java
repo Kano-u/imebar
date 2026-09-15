@@ -5,6 +5,7 @@ import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.inputmethodservice.InputMethodService;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
@@ -111,6 +112,7 @@ final class BarMenu {
             row.setTextColor(TEXT_COLOR);
             row.setGravity(Gravity.CENTER);
             row.setSingleLine(true);
+            row.setEllipsize(TextUtils.TruncateAt.END);   // 宽度固定了，长文字打省略号
             // 紧凑条目：14sp 文字 + 上下 8dp ≈ 36dp，好点又不挤
             int hPad = dp(context, 16);
             int vPad = dp(context, 8);
@@ -163,9 +165,10 @@ final class BarMenu {
             return params;
         }
 
-        int atMost = View.MeasureSpec.makeMeasureSpec(decorW, View.MeasureSpec.AT_MOST);
-        card.measure(atMost, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        int cardW = Math.max(card.getMeasuredWidth(), card.getMinimumWidth());
+        // 宽度固定为窗口宽（=屏宽）的 1/3：内容多宽都只占三分之一，不遮键盘
+        int cardW = decorW / 3;
+        card.measure(View.MeasureSpec.makeMeasureSpec(cardW, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         int cardH = card.getMeasuredHeight();
         if (cardW <= 0 || cardH <= 0) {
             params.gravity = Gravity.CENTER;
@@ -194,6 +197,7 @@ final class BarMenu {
             y = anchorBottom + gap;   // 上方放不下，改到按钮下方
         }
 
+        params.width = cardW;   // 不再 WRAP_CONTENT，宽度就是上面定的 1/3
         params.gravity = Gravity.TOP | Gravity.START;
         params.leftMargin = Math.max(x, 0);
         params.topMargin = Math.max(y, 0);

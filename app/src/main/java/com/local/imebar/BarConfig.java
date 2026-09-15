@@ -222,15 +222,11 @@ public final class BarConfig {
 
     /** 整行以 // 开头的是注释：JSON 不支持注释，默认值里那条 adb 示例就是这么写的 */
     private static String stripCommentLines(String raw) {
-        if (raw == null) {
-            return "";
-        }
         StringBuilder text = new StringBuilder();
         for (String line : raw.split("\n")) {
-            if (line == null || line.trim().startsWith("//")) {
-                continue;
+            if (!line.trim().startsWith("//")) {
+                text.append(line).append('\n');
             }
-            text.append(line).append('\n');
         }
         return text.toString();
     }
@@ -238,7 +234,7 @@ public final class BarConfig {
     /** @return 解析出来的按钮；出任何问题都返回空列表（不往外抛） */
     private static List<Button> parseJson(String json) {
         List<Button> list = new ArrayList<Button>();
-        String text = json == null ? "" : json.trim();
+        String text = json.trim();
         if (text.length() == 0) {
             return list;
         }
@@ -262,23 +258,26 @@ public final class BarConfig {
     }
 
     private static Button toButton(JSONObject obj) {
-        String label = field(obj, "label");
-        String action = field(obj, "action");
-        String arg = field(obj, "arg");
-        if (label.length() == 0) {
-            label = action;   // 没写显示文字就拿动作名顶上
-        }
-        if (label.length() == 0) {
+        Item item = toItem(obj);
+        if (item == null) {
             return null;
         }
-        if (!"menu".equals(action)) {
-            return new Button(label, action, arg, null);
+        if (!"menu".equals(item.action)) {
+            return new Button(item.label, item.action, item.arg, null);
         }
         List<Item> items = toMenuItems(obj.optJSONArray("menu"));
-        if (items.isEmpty()) {
-            return null;   // 菜单里一条都没有，这个按钮没意义
+        // 菜单里一条都没有，这个按钮没意义
+        return items.isEmpty() ? null : new Button(item.label, item.action, item.arg, items);
+    }
+
+    /** 一个 JSON 对象 → 一条 label/action/arg。label 没写就用 action 顶上，都空返回 null */
+    private static Item toItem(JSONObject obj) {
+        String label = field(obj, "label");
+        String action = field(obj, "action");
+        if (label.length() == 0) {
+            label = action;
         }
-        return new Button(label, action, arg, items);
+        return label.length() == 0 ? null : new Item(label, action, field(obj, "arg"));
     }
 
     private static List<Item> toMenuItems(JSONArray array) {
@@ -288,27 +287,17 @@ public final class BarConfig {
         }
         for (int i = 0; i < array.length(); i++) {
             JSONObject obj = array.optJSONObject(i);
-            if (obj == null) {
-                continue;
+            Item item = obj == null ? null : toItem(obj);
+            if (item != null) {
+                items.add(item);
             }
-            String label = field(obj, "label");
-            String action = field(obj, "action");
-            String arg = field(obj, "arg");
-            if (label.length() == 0) {
-                label = action;
-            }
-            if (label.length() == 0) {
-                continue;
-            }
-            items.add(new Item(label, action, arg));
         }
         return items;
     }
 
-    /** 取一个字符串字段：未知字段不管，缺字段也不报错 */
+    /** 取一个字符串字段：未知字段不管，缺字段或显式 null 都当没写 */
     private static String field(JSONObject obj, String key) {
-        String value = obj.optString(key, "");
-        return value == null ? "" : value.trim();
+        return obj.isNull(key) ? "" : obj.optString(key, "").trim();
     }
 
     // ---------- 小工具 ----------

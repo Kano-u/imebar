@@ -4,7 +4,8 @@ plugins {
 
 android {
     namespace = "com.local.imebar"
-    compileSdk = 35
+    // libxposed 的 AAR 要求 compileSdk >= 37
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.local.imebar"

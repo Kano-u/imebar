@@ -44,19 +44,20 @@ final class AdbCommand {
         }
 
         /**
-         * 给 Toast 用的一句话。
-         * 失败时把命令输出的第一行带上——日志已经删掉了，Toast 是唯一能说清"为什么失败"的地方。
+         * 失败原因，成功返回 null（成功不提示：命令干了什么自己看得见）。
+         * 失败时把退出码和输出的第一行带上——没有日志，Toast 是唯一能说清"为什么失败"的地方。
          */
-        String summary() {
+        String failure() {
             if (error != null) {
                 return error;
             }
             if (ok()) {
-                return rooted ? "命令完成（root）" : "命令完成（普通身份）";
+                return null;
             }
             String line = firstLine();
-            return line.length() == 0 ? "命令退出码 " + exitCode
-                    : "退出码 " + exitCode + "：" + line;
+            String who = rooted ? "（root）" : "（普通身份）";
+            return line.length() == 0 ? "退出码 " + exitCode + who
+                    : "退出码 " + exitCode + who + "：" + line;
         }
 
         /** 输出的第一行（截到 80 字），Toast 放不下整段输出 */

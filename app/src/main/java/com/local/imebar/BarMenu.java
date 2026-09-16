@@ -120,7 +120,6 @@ final class BarMenu {
         background.setColor(0xFFFFFFFF);
         background.setCornerRadius(dp(context, 12));
         card.setBackground(background);
-        card.setElevation(dp(context, 3));   // Level2：从键盘上浮起来
         card.setMinimumWidth(dp(context, 156));
 
         current.scrim = scrim;

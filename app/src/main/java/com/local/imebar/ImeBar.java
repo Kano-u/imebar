@@ -20,7 +20,6 @@ import android.view.Window;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
@@ -39,7 +38,6 @@ import java.util.List;
  */
 final class ImeBar {
 
-    private static final String VERSION = "0.18.0";
     /** 按钮间距固定 8dp */
     private static final int BUTTON_GAP_DP = 8;
     /** 拉取配置的最小间隔，避免频繁跨进程调用 */
@@ -54,8 +52,6 @@ final class ImeBar {
     private static View lastBar;
     private static String lastSignature;
     private static boolean receiverRegistered;
-    /** 那句"已生效"的 Toast 每次进程只弹一次 */
-    private static boolean firstAttachToasted;
     private static long lastPullAt;
 
     private ImeBar() {
@@ -81,11 +77,6 @@ final class ImeBar {
         }
         render(service, config);
 
-        if (!firstAttachToasted) {
-            firstAttachToasted = true;
-            toast(service, "简易输入法工具栏 " + VERSION + " 已生效：距离 " + config.edgeDistanceDp()
-                    + "dp / 字号 " + config.textSizeSp() + "dp / 透明度 " + config.opacityPercent() + "%");
-        }
         pullFromApp(service);
     }
 
@@ -123,7 +114,7 @@ final class ImeBar {
                 final BarConfig config = BarConfig.fromBundle(result);
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                     public void run() {
-                        applyConfig(context, config, "拉取");
+                        applyConfig(config);
                     }
                 });
             }
@@ -145,7 +136,7 @@ final class ImeBar {
                     if (intent == null || !BarConfig.ACTION_CONFIG_CHANGED.equals(intent.getAction())) {
                         return;
                     }
-                    applyConfig(ctx, BarConfig.fromBundle(intent.getExtras()), "推送");
+                    applyConfig(BarConfig.fromBundle(intent.getExtras()));
                 }
             };
             IntentFilter filter = new IntentFilter(BarConfig.ACTION_CONFIG_CHANGED);
@@ -156,19 +147,13 @@ final class ImeBar {
         }
     }
 
-    private static void applyConfig(Context context, BarConfig config, String how) {
-        BarConfig previous = current;
+    /** 收到一份新配置（推送或拉取都走这里）：存下来，然后立刻重画工具栏 */
+    private static void applyConfig(BarConfig config) {
         current = config;
         InputMethodService service = lastService.get();
         if (service != null) {
             render(service, config);
         }
-        boolean changed = previous == null || !previous.signature().equals(config.signature());
-        if (!changed) {
-            return;
-        }
-        toast(context, "设置已生效(" + how + ")：距离 " + config.edgeDistanceDp() + "dp / 字号 "
-                + config.textSizeSp() + "dp / 透明度 " + config.opacityPercent() + "%");
     }
 
     // ---------- 绘制 ----------
@@ -298,11 +283,4 @@ final class ImeBar {
         return row;
     }
 
-    /** 屏幕上可见的提示：哪一环生效了，一眼就能看到（日志已经删掉了） */
-    private static void toast(Context context, String text) {
-        try {
-            Toast.makeText(context, text, Toast.LENGTH_LONG).show();
-        } catch (Throwable ignored) {
-        }
-    }
 }

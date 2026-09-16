@@ -8,6 +8,7 @@ import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
@@ -82,6 +83,15 @@ public final class SettingsActivity extends Activity {
                 showInfoMenu(v);
             }
         });
+
+        final View saveTop = new SaveButton(this);
+        saveTop.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                save();
+            }
+        });
+
+        bar.addView(saveTop, new LinearLayout.LayoutParams(dp(48), dp(48)));
         bar.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
         column.addView(bar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -93,7 +103,7 @@ public final class SettingsActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(16), dp(16), dp(24));
+        root.setPadding(dp(24), dp(16), dp(24), dp(24));
 
         // ---------- 显示设置 ----------
         LinearLayout display = card(root, "显示设置");
@@ -177,7 +187,7 @@ public final class SettingsActivity extends Activity {
                     right = insets.getSystemWindowInsetRight();
                     bottom = insets.getSystemWindowInsetBottom();
                 }
-                bar.setPadding(dp(16) + left, top, dp(4) + right, 0);
+                bar.setPadding(dp(24) + left, top, dp(8) + right, 0);
                 LinearLayout.LayoutParams barParams =
                         (LinearLayout.LayoutParams) bar.getLayoutParams();
                 barParams.height = dp(64) + top;   // 顶栏内容固定 64dp，再垫上状态栏的高度
@@ -257,8 +267,54 @@ public final class SettingsActivity extends Activity {
 
     // ---------- 顶栏 ----------
 
-    /** 顶栏右边的「⋮」：三个点自己画，不用字符「⋮」——有的 ROM 缺这个字形，会渲染成方框 */
-    private final class DotsButton extends View {
+    /**
+     * 顶栏上的图标按钮：48dp 触摸区 + 圆形中性涟漪。
+     * 图标一律自己画，不用字符——有的 ROM 缺这些字形，会渲染成方框。
+     */
+    private abstract class IconButton extends View {
+
+        IconButton(Context context) {
+            super(context);
+            setClickable(true);
+            // 圆形涟漪：掩膜只决定形状，颜色随便写
+            GradientDrawable mask = new GradientDrawable();
+            mask.setShape(GradientDrawable.OVAL);
+            mask.setColor(0xFFFFFFFF);
+            setBackground(new RippleDrawable(
+                    ColorStateList.valueOf(color(R.color.md_ripple_neutral)), null, mask));
+        }
+    }
+
+    /** 保存：两根线画的对勾，点一下和页面底部那个「保存」按钮完全一样 */
+    private final class SaveButton extends IconButton {
+
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path check = new Path();
+
+        SaveButton(Context context) {
+            super(context);
+            paint.setColor(color(R.color.md_on_surface));
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            setContentDescription("保存");
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float centerX = getWidth() / 2f;
+            float centerY = getHeight() / 2f;
+            check.reset();   // 约 11dp 宽、9dp 高，居中
+            check.moveTo(centerX - dpf(5.5f), centerY + dpf(0.5f));
+            check.lineTo(centerX - dpf(1.5f), centerY + dpf(4.5f));
+            check.lineTo(centerX + dpf(5.5f), centerY - dpf(4.5f));
+            canvas.drawPath(check, paint);
+        }
+    }
+
+    /** 「⋮」：三个点竖排 */
+    private final class DotsButton extends IconButton {
 
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final float dot = dp(4);
@@ -270,13 +326,6 @@ public final class SettingsActivity extends Activity {
             paint.setColor(color(R.color.md_on_surface));
             paint.setStyle(Paint.Style.FILL);
             setContentDescription("更多");
-            setClickable(true);
-            // 圆形涟漪：掩膜只决定形状，颜色随便写
-            GradientDrawable mask = new GradientDrawable();
-            mask.setShape(GradientDrawable.OVAL);
-            mask.setColor(0xFFFFFFFF);
-            setBackground(new RippleDrawable(
-                    ColorStateList.valueOf(color(R.color.md_ripple_neutral)), null, mask));
         }
 
         @Override
@@ -296,8 +345,7 @@ public final class SettingsActivity extends Activity {
     private void showInfoMenu(View anchor) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(roundRect(color(R.color.md_surface_bright), dp(12)));
-        card.setElevation(dp(3));
+        card.setBackground(outlinedCard(dp(12)));
         card.setPadding(0, dp(8), 0, dp(8));
         card.addView(infoRow("版本 " + BuildConfig.VERSION_NAME));
         card.addView(infoDivider());
@@ -344,16 +392,16 @@ public final class SettingsActivity extends Activity {
     // ---------- 组件 ----------
 
     /**
-     * 一节内容 = 一张卡片：MD3 Medium 圆角 12dp、Level1 阴影 1dp。
+     * 一节内容 = 一张卡片：MD3 圆角 12dp、不用阴影——靠填充底色（surface container）
+     * 和页面底色拉开，页面浅、卡片深一点，边界一眼就能看出来。
      * 标题用 Title Medium（16sp、中等字重）+ 主色蓝：全页只有这一种蓝，
      * 和主按钮/开关/滑条同色，克制、不花。
      */
     private LinearLayout card(LinearLayout parent, String title) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(roundRect(color(R.color.md_surface_bright), dp(12)));
-        card.setElevation(dp(1));
-        int p = dp(16);
+        card.setBackground(roundRect(color(R.color.md_surface_container), dp(12)));
+        int p = dp(24);
         card.setPadding(p, p, p, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -545,12 +593,24 @@ public final class SettingsActivity extends Activity {
         return drawable;
     }
 
+    /** 白色圆角卡 + 1dp 描边：没有阴影，浮在内容上的卡片靠这圈线分清边界 */
+    private GradientDrawable outlinedCard(float radius) {
+        GradientDrawable drawable = roundRect(color(R.color.md_surface_bright), radius);
+        drawable.setStroke(Math.max(1, dp(1)), color(R.color.md_outline_variant));
+        return drawable;
+    }
+
     private int color(int resId) {
         return getColor(resId);
     }
 
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    /** 需要小数 dp 的地方（比如自绘图标的几个点）用这个 */
+    private float dpf(float value) {
+        return value * getResources().getDisplayMetrics().density;
     }
 
     private String helpText() {

@@ -125,8 +125,8 @@ final class BarActions {
     /**
      * 「ADB 命令」：把用户配的那条 shell 命令跑掉。
      *
-     * 放在后台线程跑（最多 10 秒），结果用一句 Toast 报出来——
-     * 没有日志了，所以失败时 Toast 会把命令输出的第一行带上。
+     * 放在后台线程跑（最多 10 秒）。**只有失败才提示**：命令干了什么自己看得见，
+     * 失败时 Toast 会把退出码和输出的第一行说清楚。
      */
     private static void runAdb(final InputMethodService service, String command) {
         final String cmd = command == null ? "" : command.trim();
@@ -136,7 +136,10 @@ final class BarActions {
         }
         new Thread(new Runnable() {
             public void run() {
-                toastOnMain(service, AdbCommand.run(cmd).summary());
+                String failure = AdbCommand.run(cmd).failure();
+                if (failure != null) {
+                    toastOnMain(service, "ADB 失败：" + failure);
+                }
             }
         }, "imebar-adb").start();
     }

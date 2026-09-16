@@ -60,16 +60,22 @@ public final class BarConfig {
     /**
      * 默认按钮：JSON 数组。字段是 label（显示文字）/ action（动作）/ arg（可选参数）/ menu（菜单子项）。
      * 整行 // 开头是注释（JSON 本身不支持注释，解析前会先剔除），最后一行就是 adb 的示例。
+     * 日志不在这里：工具栏最右边的「⋮」是内置的，不用配。
      */
     public static final String DEFAULT_BUTTONS =
             "[\n"
                     + "  {\"label\": \"复制\", \"action\": \"copy\"},\n"
                     + "  {\"label\": \"粘贴\", \"action\": \"paste\"},\n"
                     + "  {\"label\": \"全选\", \"action\": \"select_all\"},\n"
-                    + "  {\"label\": \"收起键盘\", \"action\": \"hide\"},\n"
-                    + "  {\"label\": \"复制日志\", \"action\": \"log\"}\n"
+                    + "  {\"label\": \"收起键盘\", \"action\": \"hide\"}\n"
                     + "  // {\"label\": \"截屏\", \"action\": \"adb\", \"arg\": \"screencap -p /sdcard/imebar.png\"}\n"
                     + "]";
+
+    /**
+     * 已经撤掉的动作：日志只从工具栏最右边的「⋮」菜单拿，
+     * 这些名字一律不认（老配置里留着的日志按钮会自动消失，也不会从配置里冒出来）。
+     */
+    private static final String[] REMOVED_ACTIONS = {"log", "copylog", "log_copy", "log_clear"};
 
     private final boolean enabled;
     private final int edgeDistance;
@@ -266,6 +272,10 @@ public final class BarConfig {
     private static Button toButton(JSONObject obj) {
         String label = field(obj, "label");
         String action = field(obj, "action");
+        if (isRemovedAction(action)) {
+            RunLog.add("已撤掉的动作 " + action + "，这个按钮被忽略");
+            return null;
+        }
         if (label.length() == 0) {
             label = action;
         }
@@ -298,6 +308,15 @@ public final class BarConfig {
     /** 取一个字符串字段：未知字段不管，缺字段或显式 null 都当没写 */
     private static String field(JSONObject obj, String key) {
         return obj.isNull(key) ? "" : obj.optString(key, "").trim();
+    }
+
+    private static boolean isRemovedAction(String action) {
+        for (String removed : REMOVED_ACTIONS) {
+            if (removed.equals(action)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ---------- 小工具 ----------

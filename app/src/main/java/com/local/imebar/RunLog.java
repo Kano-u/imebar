@@ -14,7 +14,8 @@ import java.util.Locale;
  * 极简运行日志：每个进程各自保留一份环形缓冲。
  *
  * 用途：排查"设置改了但界面没变"这类跨进程问题——直接把现场信息复制出来。
- * 输入法进程那份用工具栏按钮「复制日志」取；模块 App 那份用设置页的「复制日志」取。
+ * 输入法进程那份用工具栏最右边的「⋮」→「复制日志」取，也在那里清空；
+ * 模块 App 那份只在内存里留个记录，目前没有界面入口。
  */
 public final class RunLog {
 
@@ -36,6 +37,13 @@ public final class RunLog {
             while (LINES.size() > MAX_LINES) {
                 LINES.removeFirst();
             }
+        }
+    }
+
+    /** 「清除日志」用：把这一份缓冲清空，方便在复现问题之前先归零 */
+    public static void clear() {
+        synchronized (LINES) {
+            LINES.clear();
         }
     }
 

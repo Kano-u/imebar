@@ -59,8 +59,10 @@ final class BarActions {
                 openUrl(service, arg);
             } else if ("adb".equals(action) || "sh".equals(action)) {
                 runAdb(service, arg);
-            } else if ("log".equals(action) || "copylog".equals(action)) {
+            } else if ("log_copy".equals(action)) {
                 copyLog(service);
+            } else if ("log_clear".equals(action)) {
+                clearLog(service);
             } else {
                 Log.w(TAG, "未知动作: " + action);
                 RunLog.add("未知动作: " + action);
@@ -152,12 +154,22 @@ final class BarActions {
         }, "imebar-adb").start();
     }
 
-    /** 把输入法进程里的运行日志复制到剪贴板，方便贴出来排查问题 */
+    /**
+     * 「复制日志」：把输入法进程里的运行日志复制到剪贴板，方便贴出来排查问题。
+     * 先收起键盘，复制完就能直接去别的输入框粘贴。
+     */
     private static void copyLog(InputMethodService service) {
         service.requestHideSelf(0);
-        RunLog.add("用户点击了工具栏的「复制日志」");
+        RunLog.add("用户点击了工具栏「⋮」→「复制日志」");
         boolean ok = RunLog.copyToClipboard(service);
         toast(service, ok ? "日志已复制到剪贴板，去粘贴即可" : "复制失败");
+    }
+
+    /** 「清除日志」：清空缓冲后留一行，免得点完不知道到底清没清 */
+    private static void clearLog(InputMethodService service) {
+        RunLog.clear();
+        RunLog.add("用户点击了工具栏「⋮」→「清除日志」");
+        toast(service, "日志已清空");
     }
 
     private static void toastOnMain(final Context context, final String text) {

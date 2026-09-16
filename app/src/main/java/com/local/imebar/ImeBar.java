@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.inputmethodservice.InputMethodService;
 import android.net.Uri;
 import android.os.Build;
@@ -24,6 +26,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -41,9 +44,11 @@ import java.util.List;
 final class ImeBar {
 
     private static final String TAG = "ImeBar";
-    private static final String VERSION = "0.16.0";
+    private static final String VERSION = "0.17.0";
     /** 按钮间距固定 8dp */
     private static final int BUTTON_GAP_DP = 8;
+    /** 最右边「⋮」的宽度：固定窄条，不参与均分 */
+    private static final int OVERFLOW_WIDTH_DP = 36;
     /** 拉取配置的最小间隔，避免频繁跨进程调用 */
     private static final long PULL_INTERVAL_MS = 1500;
 
@@ -320,7 +325,86 @@ final class ImeBar {
             item.setLayoutParams(lp);
             row.addView(item);
         }
+        row.addView(buildOverflow(context, service, cfg));
         return row;
+    }
+
+    /**
+     * 工具栏最右边的「⋮」：固定窄条，点开就是「复制日志 / 清除日志」。
+     *
+     * 三点自己画，不用字符「⋮」——有的 ROM 缺这个字形，会渲染成一个方框。
+     * 它不写进按钮 JSON，所以也不会被配置删掉；点击沿用普通菜单按钮那条路
+     * （贴着它正上方弹卡片、点外面收起、再点收起都是 BarMenu 现成的行为）。
+     */
+    private static View buildOverflow(final Context context, final InputMethodService service,
+                                      BarConfig cfg) {
+        float density = context.getResources().getDisplayMetrics().density;
+        int gap = (int) (BUTTON_GAP_DP * density + 0.5f);
+        int width = (int) (OVERFLOW_WIDTH_DP * density + 0.5f);
+
+        View dots = new DotsView(context, cfg.textColor(), cfg.textSizeSp() * density);
+        dots.setClickable(true);
+        dots.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                View decor = v.getRootView();
+                if (decor instanceof ViewGroup) {
+                    BarMenu.toggle((ViewGroup) decor, v, context, service, overflowMenu());
+                }
+            }
+        });
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                width, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(gap / 2, 0, 0, 0);
+        dots.setLayoutParams(lp);
+        return dots;
+    }
+
+    /** 「⋮」的菜单内容：固定两项，手工构造（不经过按钮配置，所以也没法被改掉） */
+    private static BarConfig.Button overflowMenu() {
+        List<BarConfig.Button> items = new ArrayList<BarConfig.Button>();
+        items.add(new BarConfig.Button("复制日志", "log_copy", "", null));
+        items.add(new BarConfig.Button("清除日志", "log_clear", "", null));
+        return new BarConfig.Button("更多", "menu", "", items);
+    }
+
+    /**
+     * 三个点：竖排、水平居中，大小和颜色跟着工具栏当前配置走（所以调字号/配色它也跟着变）。
+     * 自身高度跟文字按钮差不多，让点按区域好按一些。
+     */
+    private static final class DotsView extends View {
+
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float dot;
+        /** 相邻两点圆心之间的距离：比直径大 0.9 倍，即点与点之间留 0.9 个直径的空隙 */
+        private final float step;
+        private final int height;
+
+        DotsView(Context context, int color, float textPx) {
+            super(context);
+            float density = context.getResources().getDisplayMetrics().density;
+            float size = textPx * 0.18f;                      // 字号 10dp ≈ 直径 2dp
+            dot = Math.max(2 * density, Math.min(5 * density, size));
+            step = dot * 1.9f;
+            height = (int) Math.ceil(textPx + 16 * density);   // 和文字按钮一样高
+            paint.setColor(color);
+            paint.setStyle(Paint.Style.FILL);
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            setMeasuredDimension(resolveSize(0, widthMeasureSpec),
+                    resolveSize(height, heightMeasureSpec));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float centerX = getWidth() / 2f;
+            float top = getHeight() / 2f - step;   // 三点整体垂直居中
+            for (int i = 0; i < 3; i++) {
+                canvas.drawCircle(centerX, top + step * i, dot / 2f, paint);
+            }
+        }
     }
 
     /** 屏幕上可见的提示：方便不看日志也能判断哪一环生效了 */

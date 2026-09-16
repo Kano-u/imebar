@@ -44,7 +44,6 @@ public final class SettingsActivity extends Activity {
     private EditText textColorBox;
     private EditText barBgBox;
     private EditText buttonsBox;
-    private TextView logView;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -108,34 +107,6 @@ public final class SettingsActivity extends Activity {
         help.setPadding(0, dp(8), 0, 0);
         buttons.addView(help);
 
-        // ---------- 运行日志 ----------
-        LinearLayout logCard = card(root, "运行日志");
-        logCard.addView(hint("这里显示模块 App 进程的日志；输入法进程的日志用工具栏上的"
-                + "「更多 → 复制日志」取。"));
-
-        logView = new TextView(this);
-        logView.setTextSize(11f);
-        logView.setTypeface(Typeface.MONOSPACE);
-        logView.setTextColor(color(R.color.md_on_surface));
-        logView.setBackground(roundRect(color(R.color.md_surface_container), dp(12)));
-        logView.setPadding(dp(12), dp(12), dp(12), dp(12));
-        logView.setText(RunLog.dump());
-        ScrollView logScroll = new ScrollView(this);
-        logScroll.addView(logView);
-        LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(200));
-        logParams.topMargin = dp(12);
-        logCard.addView(logScroll, logParams);
-
-        logCard.addView(actionButton("复制日志", false, new View.OnClickListener() {
-            public void onClick(View v) {
-                RunLog.add("点击了设置页的「复制日志」");
-                boolean ok = RunLog.copyToClipboard(SettingsActivity.this);
-                refreshLog();
-                toast(ok ? "日志已复制到剪贴板" : "复制失败");
-            }
-        }));
-
         // ---------- 底部按钮：手动保存 ----------
         root.addView(actionButton("保存", true, new View.OnClickListener() {
             public void onClick(View v) {
@@ -198,8 +169,7 @@ public final class SettingsActivity extends Activity {
                     .apply();
         } catch (Throwable t) {
             RunLog.add("写入偏好失败(" + reason + "): " + t);
-            toast("保存失败，看运行日志");
-            refreshLog();
+            toast("保存失败：" + t);
             return;
         }
 
@@ -214,14 +184,7 @@ public final class SettingsActivity extends Activity {
             RunLog.add("广播失败: " + t);
         }
         RunLog.add("已保存(" + reason + "): " + cfg.summary() + " 广播=" + sent);
-        refreshLog();
         toast(sent ? "已保存并生效" : "已保存（广播失败，重启输入法后生效）");
-    }
-
-    private void refreshLog() {
-        if (logView != null) {
-            logView.setText(RunLog.dump());
-        }
     }
 
     // ---------- 读取 / 默认值 ----------
@@ -244,7 +207,6 @@ public final class SettingsActivity extends Activity {
         }
         buttonsBox.setText(buttons);
         RunLog.add("读取到已保存的配置: " + cfg.summary());
-        refreshLog();
     }
 
     private void loadDefaults() {
@@ -476,7 +438,7 @@ public final class SettingsActivity extends Activity {
                 + "enter 回车 / delete 退格 / left 光标左移 / right 光标右移 / hide 收起键盘\n"
                 + "text 插入固定文字（arg 写内容）\n"
                 + "app 打开某个 App（arg 写包名） / url 打开网址（arg 写链接）\n"
-                + "adb 执行 shell 命令（arg 写命令，需要 root） / log 复制输入法日志\n\n"
+                + "adb 执行 shell 命令（arg 写命令，需要 root）\n\n"
                 + "字段：label 显示文字（不写就用 action 顶上）、action 动作、arg 参数（可省）。\n"
                 + "菜单按钮：\"action\":\"menu\"，子项放 \"menu\":[{\"label\":\"剪切\",\"action\":\"cut\"}]。\n"
                 + "子项里还能再放 menu（多级嵌套，深度不限）；进子菜单后卡片最上面有「← 返回」。\n"

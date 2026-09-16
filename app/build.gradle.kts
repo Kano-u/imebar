@@ -14,8 +14,8 @@ android {
         applicationId = "com.local.imebar"
         minSdk = 27
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.17.0"
+        versionCode = 22
+        versionName = "0.18.0"
     }
 
     signingConfigs {

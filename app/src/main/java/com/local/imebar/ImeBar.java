@@ -5,8 +5,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Canvas;
-import android.graphics.Paint;
 import android.inputmethodservice.InputMethodService;
 import android.net.Uri;
 import android.os.Build;
@@ -14,7 +12,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -26,7 +23,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -43,12 +39,9 @@ import java.util.List;
  */
 final class ImeBar {
 
-    private static final String TAG = "ImeBar";
-    private static final String VERSION = "0.17.0";
+    private static final String VERSION = "0.18.0";
     /** 按钮间距固定 8dp */
     private static final int BUTTON_GAP_DP = 8;
-    /** 最右边「⋮」的宽度：固定窄条，不参与均分 */
-    private static final int OVERFLOW_WIDTH_DP = 36;
     /** 拉取配置的最小间隔，避免频繁跨进程调用 */
     private static final long PULL_INTERVAL_MS = 1500;
 
@@ -61,8 +54,8 @@ final class ImeBar {
     private static View lastBar;
     private static String lastSignature;
     private static boolean receiverRegistered;
-    private static boolean firstAttachLogged;
-    private static boolean firstPullLogged;
+    /** 那句"已生效"的 Toast 每次进程只弹一次 */
+    private static boolean firstAttachToasted;
     private static long lastPullAt;
 
     private ImeBar() {
@@ -88,9 +81,8 @@ final class ImeBar {
         }
         render(service, config);
 
-        if (!firstAttachLogged) {
-            firstAttachLogged = true;
-            RunLog.add("首次弹出键盘，生效配置 " + config.summary());
+        if (!firstAttachToasted) {
+            firstAttachToasted = true;
             toast(service, "简易输入法工具栏 " + VERSION + " 已生效：距离 " + config.edgeDistanceDp()
                     + "dp / 字号 " + config.textSizeSp() + "dp / 透明度 " + config.opacityPercent() + "%");
         }
@@ -104,8 +96,7 @@ final class ImeBar {
         try {
             return configSource != null ? configSource.get() : BarConfig.defaults();
         } catch (Throwable t) {
-            Log.w(TAG, "读远程配置失败，用默认值", t);
-            return BarConfig.defaults();
+            return BarConfig.defaults();   // 读不到就用默认值，别让输入法看到异常
         }
     }
 
@@ -123,21 +114,15 @@ final class ImeBar {
                     result = context.getContentResolver().call(
                             Uri.parse("content://" + ConfigProvider.AUTHORITY),
                             ConfigProvider.METHOD_GET_CONFIG, null, null);
-                } catch (Throwable t) {
-                    Log.w(TAG, "拉取配置失败（模块 App 可能被强制停止）", t);
-                    RunLog.add("拉取配置失败: " + t);
+                } catch (Throwable ignored) {
+                    // 模块 App 可能被强制停止，或跨进程调用被拦：静默，等下一次推送/兜底配置
                 }
                 if (result == null) {
-                    RunLog.add("拉取配置返回空");
                     return;
                 }
                 final BarConfig config = BarConfig.fromBundle(result);
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                     public void run() {
-                        if (!firstPullLogged) {
-                            firstPullLogged = true;
-                            RunLog.add("首次拉取成功: " + config.summary());
-                        }
                         applyConfig(context, config, "拉取");
                     }
                 });
@@ -160,18 +145,14 @@ final class ImeBar {
                     if (intent == null || !BarConfig.ACTION_CONFIG_CHANGED.equals(intent.getAction())) {
                         return;
                     }
-                    Log.i(TAG, "收到设置页推送");
                     applyConfig(ctx, BarConfig.fromBundle(intent.getExtras()), "推送");
                 }
             };
             IntentFilter filter = new IntentFilter(BarConfig.ACTION_CONFIG_CHANGED);
             int flags = Build.VERSION.SDK_INT >= 33 ? Context.RECEIVER_EXPORTED : 0;
             context.registerReceiver(receiver, filter, null, null, flags);
-            Log.i(TAG, "已注册配置变更接收器");
-            RunLog.add("已注册配置变更接收器");
-        } catch (Throwable t) {
-            Log.w(TAG, "注册配置变更接收器失败", t);
-            RunLog.add("注册配置变更接收器失败: " + t);
+        } catch (Throwable ignored) {
+            // 注册不上就只剩"下次弹键盘重新拉取"这一条路，不致命
         }
     }
 
@@ -186,10 +167,6 @@ final class ImeBar {
         if (!changed) {
             return;
         }
-        RunLog.add("配置更新(" + how + "): " + config.summary());
-        Log.i(TAG, "配置已更新(" + how + ")：距离 " + config.edgeDistanceDp() + "dp, 边距 "
-                + config.sideMarginDp() + "dp, 字号 " + config.textSizeSp() + "dp, 透明度 "
-                + config.opacityPercent() + "%");
         toast(context, "设置已生效(" + how + ")：距离 " + config.edgeDistanceDp() + "dp / 字号 "
                 + config.textSizeSp() + "dp / 透明度 " + config.opacityPercent() + "%");
     }
@@ -213,8 +190,7 @@ final class ImeBar {
             }
             View decor = window.getDecorView();
             if (!(decor instanceof ViewGroup)) {
-                Log.w(TAG, "DecorView 不是 ViewGroup，跳过");
-                return;
+                return;   // 拿不到能挂 View 的容器
             }
             ViewGroup root = (ViewGroup) decor;
 
@@ -241,14 +217,8 @@ final class ImeBar {
             root.addView(bar, lp);
             lastBar = bar;
             lastSignature = signature;
-            RunLog.add("重建工具栏: " + cfg.summary());
-            Log.i(TAG, "工具栏已挂载(键盘底部), 按钮数=" + cfg.buttons().size()
-                    + ", 底部距离=" + cfg.edgeDistanceDp() + "dp"
-                    + ", 左右边距=" + cfg.sideMarginDp() + "dp"
-                    + ", 字号=" + cfg.textSizeSp() + "dp"
-                    + ", 透明度=" + cfg.opacityPercent() + "%");
-        } catch (Throwable t) {
-            Log.e(TAG, "挂载工具栏失败", t);
+        } catch (Throwable ignored) {
+            // 挂不上就算了：绝不能把异常抛回输入法进程
         }
     }
 
@@ -325,89 +295,10 @@ final class ImeBar {
             item.setLayoutParams(lp);
             row.addView(item);
         }
-        row.addView(buildOverflow(context, service, cfg));
         return row;
     }
 
-    /**
-     * 工具栏最右边的「⋮」：固定窄条，点开就是「复制日志 / 清除日志」。
-     *
-     * 三点自己画，不用字符「⋮」——有的 ROM 缺这个字形，会渲染成一个方框。
-     * 它不写进按钮 JSON，所以也不会被配置删掉；点击沿用普通菜单按钮那条路
-     * （贴着它正上方弹卡片、点外面收起、再点收起都是 BarMenu 现成的行为）。
-     */
-    private static View buildOverflow(final Context context, final InputMethodService service,
-                                      BarConfig cfg) {
-        float density = context.getResources().getDisplayMetrics().density;
-        int gap = (int) (BUTTON_GAP_DP * density + 0.5f);
-        int width = (int) (OVERFLOW_WIDTH_DP * density + 0.5f);
-
-        View dots = new DotsView(context, cfg.textColor(), cfg.textSizeSp() * density);
-        dots.setClickable(true);
-        dots.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                View decor = v.getRootView();
-                if (decor instanceof ViewGroup) {
-                    BarMenu.toggle((ViewGroup) decor, v, context, service, overflowMenu());
-                }
-            }
-        });
-
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                width, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(gap / 2, 0, 0, 0);
-        dots.setLayoutParams(lp);
-        return dots;
-    }
-
-    /** 「⋮」的菜单内容：固定两项，手工构造（不经过按钮配置，所以也没法被改掉） */
-    private static BarConfig.Button overflowMenu() {
-        List<BarConfig.Button> items = new ArrayList<BarConfig.Button>();
-        items.add(new BarConfig.Button("复制日志", "log_copy", "", null));
-        items.add(new BarConfig.Button("清除日志", "log_clear", "", null));
-        return new BarConfig.Button("更多", "menu", "", items);
-    }
-
-    /**
-     * 三个点：竖排、水平居中，大小和颜色跟着工具栏当前配置走（所以调字号/配色它也跟着变）。
-     * 自身高度跟文字按钮差不多，让点按区域好按一些。
-     */
-    private static final class DotsView extends View {
-
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final float dot;
-        /** 相邻两点圆心之间的距离：比直径大 0.9 倍，即点与点之间留 0.9 个直径的空隙 */
-        private final float step;
-        private final int height;
-
-        DotsView(Context context, int color, float textPx) {
-            super(context);
-            float density = context.getResources().getDisplayMetrics().density;
-            float size = textPx * 0.18f;                      // 字号 10dp ≈ 直径 2dp
-            dot = Math.max(2 * density, Math.min(5 * density, size));
-            step = dot * 1.9f;
-            height = (int) Math.ceil(textPx + 16 * density);   // 和文字按钮一样高
-            paint.setColor(color);
-            paint.setStyle(Paint.Style.FILL);
-        }
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            setMeasuredDimension(resolveSize(0, widthMeasureSpec),
-                    resolveSize(height, heightMeasureSpec));
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            float centerX = getWidth() / 2f;
-            float top = getHeight() / 2f - step;   // 三点整体垂直居中
-            for (int i = 0; i < 3; i++) {
-                canvas.drawCircle(centerX, top + step * i, dot / 2f, paint);
-            }
-        }
-    }
-
-    /** 屏幕上可见的提示：方便不看日志也能判断哪一环生效了 */
+    /** 屏幕上可见的提示：哪一环生效了，一眼就能看到（日志已经删掉了） */
     private static void toast(Context context, String text) {
         try {
             Toast.makeText(context, text, Toast.LENGTH_LONG).show();

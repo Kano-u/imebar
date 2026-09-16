@@ -1,6 +1,5 @@
 package com.local.imebar;
 
-import android.util.Log;
 import android.view.inputmethod.EditorInfo;
 
 import java.lang.reflect.Method;
@@ -15,7 +14,6 @@ import io.github.libxposed.api.XposedModule;
  */
 final class BarHook {
 
-    private static final String TAG = "ImeBar";
     private static volatile boolean installed;
 
     private BarHook() {
@@ -25,7 +23,7 @@ final class BarHook {
         void run(Object thisObject);
     }
 
-    static void install(XposedModule module, ClassLoader classLoader, ConfigSource source, String pkg) {
+    static void install(XposedModule module, ClassLoader classLoader, ConfigSource source) {
         if (installed) {
             return;
         }
@@ -58,20 +56,15 @@ final class BarHook {
             hook(module, ims, "onWindowHidden", new Class<?>[0], dismissMenu);
             hook(module, ims, "onFinishInputView", new Class<?>[]{boolean.class}, dismissMenu);
 
-            Log.i(TAG, "已在 " + pkg + " 中安装 hook");
-            RunLog.add("已在 " + pkg + " 安装 hook 完成");
-        } catch (Throwable t) {
-            Log.e(TAG, "安装 hook 失败: " + pkg, t);
-            RunLog.add("安装 hook 失败 " + pkg + ": " + t);
+        } catch (Throwable ignored) {
+            // 装不上就算了：模块不生效总比把输入法进程搞崩强
         }
     }
 
     private static void hook(XposedModule module, Class<?> cls, String name, Class<?>[] params, final After after) {
         Method method = findMethod(cls, name, params);
         if (method == null) {
-            Log.w(TAG, "这个方法不存在，跳过: " + cls.getName() + "#" + name);
-            RunLog.add("方法不存在，跳过: " + cls.getName() + "#" + name);
-            return;
+            return;   // 这个 ROM 没这个方法，跳过
         }
         try {
             module.hook(method).intercept(new XposedInterface.Hooker() {
@@ -81,16 +74,14 @@ final class BarHook {
                     Object result = chain.proceed();
                     try {
                         after.run(chain.getThisObject());
-                    } catch (Throwable t) {
-                        Log.w(TAG, "处理失败", t);
+                    } catch (Throwable ignored) {
+                        // 钩子里出错不能往外抛，否则会连累输入法自己
                     }
                     return result;
                 }
             });
-            Log.i(TAG, "已 hook " + cls.getName() + "#" + name);
-        } catch (Throwable t) {
-            Log.e(TAG, "hook 失败: " + name, t);
-            RunLog.add("hook 失败 " + name + ": " + t);
+        } catch (Throwable ignored) {
+            // 单个 hook 失败不影响其它 hook
         }
     }
 

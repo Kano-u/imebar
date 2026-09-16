@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      没有 ActionBar：标题画在内容里，省掉一层系统栏（也顺手修掉"顶部文字被顶栏盖住"）。
+      没有系统 ActionBar：顶栏自己画（标题 + 右边「⋮」），省掉一层系统栏，
+      也顺手避开了"顶部文字被顶栏盖住"这类主题差异。
       colorAccent / colorControlActivated 决定复选框的对勾和 SeekBar 的进度色——就是那两处浅绿。
     -->
     <style name="AppTheme" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">

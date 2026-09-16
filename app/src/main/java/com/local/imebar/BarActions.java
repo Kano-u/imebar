@@ -6,7 +6,6 @@ import android.inputmethodservice.InputMethodService;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.SystemClock;
-import android.util.Log;
 import android.view.KeyEvent;
 import android.view.inputmethod.InputConnection;
 import android.widget.Toast;
@@ -16,10 +15,9 @@ import android.widget.Toast;
  *
  * 除了用户自己配的 `adb`（shell 命令）之外，都是本机操作、不联网。
  * 动作名故意起得短（copy / paste / hide / app / adb ...），方便在设置页里手写。
+ * 项目里已经没有日志了：动作出问题一律当场弹一句 Toast，不静默失败。
  */
 final class BarActions {
-
-    private static final String TAG = "ImeBar";
 
     private BarActions() {
     }
@@ -28,8 +26,6 @@ final class BarActions {
         if (action == null || action.length() == 0) {
             return;
         }
-        RunLog.add("执行动作: " + action
-                + (arg == null || arg.length() == 0 ? "" : " 参数=" + arg));
         try {
             if ("copy".equals(action)) {
                 contextMenu(service, android.R.id.copy, "复制");
@@ -59,17 +55,12 @@ final class BarActions {
                 openUrl(service, arg);
             } else if ("adb".equals(action) || "sh".equals(action)) {
                 runAdb(service, arg);
-            } else if ("log_copy".equals(action)) {
-                copyLog(service);
-            } else if ("log_clear".equals(action)) {
-                clearLog(service);
             } else {
-                Log.w(TAG, "未知动作: " + action);
-                RunLog.add("未知动作: " + action);
+                toast(service, "未知动作：" + action);
             }
         } catch (Throwable t) {
-            Log.w(TAG, "执行动作失败: " + action, t);
-            RunLog.add("执行动作失败 " + action + ": " + t);
+            // 没有日志可看了：出问题只能当场用 Toast 说清楚
+            toast(service, "执行失败：" + action + "，" + reason(t));
         }
     }
 
@@ -79,7 +70,7 @@ final class BarActions {
             return;
         }
         if (!ic.performContextMenuAction(id)) {
-            Log.i(TAG, name + " 这个输入框不支持");
+            toast(service, "这个输入框不支持" + name);
         }
     }
 
@@ -115,7 +106,7 @@ final class BarActions {
         }
         Intent intent = service.getPackageManager().getLaunchIntentForPackage(pkg);
         if (intent == null) {
-            Log.i(TAG, "找不到这个 App: " + pkg);
+            toast(service, "找不到这个 App：" + pkg);
             return;
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -134,8 +125,8 @@ final class BarActions {
     /**
      * 「ADB 命令」：把用户配的那条 shell 命令跑掉。
      *
-     * 放在后台线程跑（最多 10 秒），结果写进运行日志、并用 Toast 报一句，
-     * 所以不管成功还是失败都能看到发生了什么。
+     * 放在后台线程跑（最多 10 秒），结果用一句 Toast 报出来——
+     * 没有日志了，所以失败时 Toast 会把命令输出的第一行带上。
      */
     private static void runAdb(final InputMethodService service, String command) {
         final String cmd = command == null ? "" : command.trim();
@@ -143,33 +134,17 @@ final class BarActions {
             toast(service, "ADB 命令是空的");
             return;
         }
-        RunLog.add("ADB 命令: " + cmd);
         new Thread(new Runnable() {
             public void run() {
-                AdbCommand.Result result = AdbCommand.run(cmd);
-                String detail = result.detail();
-                RunLog.add("ADB 结果: " + (detail.length() > 800 ? detail.substring(0, 800) + "…" : detail));
-                toastOnMain(service, result.summary());
+                toastOnMain(service, AdbCommand.run(cmd).summary());
             }
         }, "imebar-adb").start();
     }
 
-    /**
-     * 「复制日志」：把输入法进程里的运行日志复制到剪贴板，方便贴出来排查问题。
-     * 先收起键盘，复制完就能直接去别的输入框粘贴。
-     */
-    private static void copyLog(InputMethodService service) {
-        service.requestHideSelf(0);
-        RunLog.add("用户点击了工具栏「⋮」→「复制日志」");
-        boolean ok = RunLog.copyToClipboard(service);
-        toast(service, ok ? "日志已复制到剪贴板，去粘贴即可" : "复制失败");
-    }
-
-    /** 「清除日志」：清空缓冲后留一行，免得点完不知道到底清没清 */
-    private static void clearLog(InputMethodService service) {
-        RunLog.clear();
-        RunLog.add("用户点击了工具栏「⋮」→「清除日志」");
-        toast(service, "日志已清空");
+    /** 异常原因压成一行，免得 Toast 太长 */
+    private static String reason(Throwable t) {
+        String text = String.valueOf(t);
+        return text.length() > 120 ? text.substring(0, 120) + "…" : text;
     }
 
     private static void toastOnMain(final Context context, final String text) {

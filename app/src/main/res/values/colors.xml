@@ -25,4 +25,6 @@
 
     <!-- 状态层：主色 12% -->
     <color name="md_ripple_primary">#1F0B57D0</color>
+    <!-- 状态层：中性黑 12%（图标按钮用，例如顶栏的「⋮」） -->
+    <color name="md_ripple_neutral">#1F000000</color>
 </resources>

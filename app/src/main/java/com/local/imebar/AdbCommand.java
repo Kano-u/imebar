@@ -43,23 +43,27 @@ final class AdbCommand {
             return error == null && exitCode == 0;
         }
 
-        /** 给 Toast 用的一句话 */
+        /**
+         * 给 Toast 用的一句话。
+         * 失败时把命令输出的第一行带上——日志已经删掉了，Toast 是唯一能说清"为什么失败"的地方。
+         */
         String summary() {
             if (error != null) {
                 return error;
             }
-            return ok() ? (rooted ? "命令完成（root）" : "命令完成（普通身份）")
-                    : "命令退出码 " + exitCode;
+            if (ok()) {
+                return rooted ? "命令完成（root）" : "命令完成（普通身份）";
+            }
+            String line = firstLine();
+            return line.length() == 0 ? "命令退出码 " + exitCode
+                    : "退出码 " + exitCode + "：" + line;
         }
 
-        /** 给日志框用：多行结果 */
-        String detail() {
-            StringBuilder text = new StringBuilder();
-            text.append(summary());
-            if (output.length() > 0) {
-                text.append('\n').append(output);
-            }
-            return text.toString();
+        /** 输出的第一行（截到 80 字），Toast 放不下整段输出 */
+        private String firstLine() {
+            int end = output.indexOf('\n');
+            String line = (end < 0 ? output : output.substring(0, end)).trim();
+            return line.length() > 80 ? line.substring(0, 80) + "…" : line;
         }
     }
 

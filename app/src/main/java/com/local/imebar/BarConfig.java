@@ -60,7 +60,7 @@ public final class BarConfig {
     /**
      * 默认按钮：JSON 数组。字段是 label（显示文字）/ action（动作）/ arg（可选参数）/ menu（菜单子项）。
      * 整行 // 开头是注释（JSON 本身不支持注释，解析前会先剔除），最后一行就是 adb 的示例。
-     * 日志不在这里：工具栏最右边的「⋮」是内置的，不用配。
+     * 日志那套动作已经删掉了，不用（也不能）配。
      */
     public static final String DEFAULT_BUTTONS =
             "[\n"
@@ -72,8 +72,8 @@ public final class BarConfig {
                     + "]";
 
     /**
-     * 已经撤掉的动作：日志只从工具栏最右边的「⋮」菜单拿，
-     * 这些名字一律不认（老配置里留着的日志按钮会自动消失，也不会从配置里冒出来）。
+     * 已经撤掉的动作：日志系统整个删了，这些名字一律不认
+     * （老配置里留着的「复制日志」按钮会自动消失，也写不回配置里）。
      */
     private static final String[] REMOVED_ACTIONS = {"log", "copylog", "log_copy", "log_clear"};
 
@@ -204,12 +204,6 @@ public final class BarConfig {
                 + "|" + opacity + "|" + textColorHex + "|" + barBackgroundHex + "|" + buttonsRaw;
     }
 
-    /** 一行摘要，写日志用 */
-    public String summary() {
-        return "距离" + edgeDistance + " 边距" + sideMargin + " 字号" + textSize
-                + " 透明度" + opacity + " 按钮数=" + buttons.size();
-    }
-
     // ---------- 解析 ----------
 
     /**
@@ -222,7 +216,6 @@ public final class BarConfig {
         if (!buttons.isEmpty()) {
             return buttons;
         }
-        RunLog.add("按钮配置不是合法 JSON（或没有按钮），已改用默认按钮");
         return parseJson(stripCommentLines(DEFAULT_BUTTONS));
     }
 
@@ -257,7 +250,6 @@ public final class BarConfig {
                 }
             }
         } catch (Throwable t) {
-            RunLog.add("按钮 JSON 解析失败: " + t);
             list.clear();
         }
         return list;
@@ -273,8 +265,7 @@ public final class BarConfig {
         String label = field(obj, "label");
         String action = field(obj, "action");
         if (isRemovedAction(action)) {
-            RunLog.add("已撤掉的动作 " + action + "，这个按钮被忽略");
-            return null;
+            return null;   // 已撤掉的动作（日志那套）直接丢掉，老配置里留着的按钮会自动消失
         }
         if (label.length() == 0) {
             label = action;

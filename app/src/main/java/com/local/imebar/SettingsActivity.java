@@ -1,10 +1,15 @@
 package com.local.imebar;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
@@ -16,6 +21,7 @@ import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
@@ -26,6 +32,7 @@ import android.widget.Toast;
  * 设置页：Material Design 3 风格，零依赖（只用系统控件 + 代码自绘）。
  *
  * 逻辑：改完点「保存」才写偏好 + 广播下发（手动保存）；「恢复默认」= 填好默认值并立即保存。
+ * 版式：最上面一条固定顶栏（APP 名称 + 右边「⋮」），下面才是可滚动的卡片区。
  * 视觉：卡片 12dp 圆角 + 1dp 阴影、胶囊按钮带涟漪、Switch 代替复选框、滑条染色、
  * 输入框是 MD3 outlined 样式（常态 1dp 描边、聚焦 2dp 主色）。颜色全在 res/values/colors.xml。
  */
@@ -49,20 +56,44 @@ public final class SettingsActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(BarConfig.GROUP, MODE_PRIVATE);
-        RunLog.add("打开设置页（模块 App 进程）");
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(16), dp(16), dp(24));
+        // 整页 = [顶栏][1dp 分隔线][可滚动的内容]
+        final LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setBackgroundColor(color(R.color.md_surface));
 
-        // Title Large
+        final LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setBackgroundColor(color(R.color.md_surface));
+
         TextView title = new TextView(this);
         title.setText(R.string.app_name);
         title.setTextSize(22f);
         title.setTypeface(medium);
         title.setTextColor(color(R.color.md_on_surface));
-        title.setPadding(dp(4), dp(8), 0, dp(16));
-        root.addView(title);
+        title.setSingleLine(true);
+        bar.addView(title, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        final View more = new DotsButton(this);
+        more.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                showInfoMenu(v);
+            }
+        });
+        bar.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        column.addView(bar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        View divider = new View(this);
+        divider.setBackgroundColor(color(R.color.md_outline_variant));
+        column.addView(divider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(16), dp(16), dp(16), dp(24));
 
         // ---------- 显示设置 ----------
         LinearLayout display = card(root, "显示设置");
@@ -110,21 +141,24 @@ public final class SettingsActivity extends Activity {
         // ---------- 底部按钮：手动保存 ----------
         root.addView(actionButton("保存", true, new View.OnClickListener() {
             public void onClick(View v) {
-                save("点击保存");
+                save();
             }
         }));
         root.addView(actionButton("恢复默认", false, new View.OnClickListener() {
             public void onClick(View v) {
                 loadDefaults();
-                save("恢复默认");
+                save();
             }
         }));
 
         final ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(color(R.color.md_surface));
         scroll.addView(root);
-        // Android 15（targetSdk 35）默认边到边：不加这段，最上面的字会被状态栏盖住
-        scroll.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+        column.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        // Android 15（targetSdk 35）默认边到边：顶栏吃上面的 inset、滚动区吃下面的，
+        // 这样标题不会被状态栏盖住，"保存"按钮也不会被导航栏压住。
+        column.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             public WindowInsets onApplyWindowInsets(View view, WindowInsets insets) {
                 int left;
                 int top;
@@ -143,11 +177,16 @@ public final class SettingsActivity extends Activity {
                     right = insets.getSystemWindowInsetRight();
                     bottom = insets.getSystemWindowInsetBottom();
                 }
-                view.setPadding(left, top, right, bottom);
+                bar.setPadding(dp(16) + left, top, dp(4) + right, 0);
+                LinearLayout.LayoutParams barParams =
+                        (LinearLayout.LayoutParams) bar.getLayoutParams();
+                barParams.height = dp(64) + top;   // 顶栏内容固定 64dp，再垫上状态栏的高度
+                bar.setLayoutParams(barParams);
+                scroll.setPadding(0, 0, 0, bottom);
                 return insets;
             }
         });
-        setContentView(scroll);
+        setContentView(column);
 
         load();
     }
@@ -155,7 +194,7 @@ public final class SettingsActivity extends Activity {
     // ---------- 保存 ----------
 
     /** 把当前控件的值写进偏好，并广播给输入法进程 */
-    private void save(String reason) {
+    private void save() {
         try {
             prefs.edit()
                     .putBoolean(BarConfig.KEY_ENABLED, enabledSwitch.isChecked())
@@ -168,7 +207,6 @@ public final class SettingsActivity extends Activity {
                     .putString(BarConfig.KEY_BUTTONS, buttonsBox.getText().toString())
                     .apply();
         } catch (Throwable t) {
-            RunLog.add("写入偏好失败(" + reason + "): " + t);
             toast("保存失败：" + t);
             return;
         }
@@ -180,10 +218,9 @@ public final class SettingsActivity extends Activity {
             intent.putExtras(cfg.toBundle());
             sendBroadcast(intent);
             sent = true;
-        } catch (Throwable t) {
-            RunLog.add("广播失败: " + t);
+        } catch (Throwable ignored) {
+            // 广播被拦（个别 ROM 会）不急：下次弹键盘还会重新拉一次配置
         }
-        RunLog.add("已保存(" + reason + "): " + cfg.summary() + " 广播=" + sent);
         toast(sent ? "已保存并生效" : "已保存（广播失败，重启输入法后生效）");
     }
 
@@ -202,11 +239,9 @@ public final class SettingsActivity extends Activity {
         if (!buttons.trim().startsWith("[")) {
             // 旧版是「显示文字|动作|参数」这种竖线格式，本版本不再支持：
             // 直接把默认值（JSON）填进输入框，让界面看到的就是实际生效的那份
-            RunLog.add("按钮配置是旧格式，已填成默认 JSON（点「保存」写回）");
             buttons = BarConfig.DEFAULT_BUTTONS;
         }
         buttonsBox.setText(buttons);
-        RunLog.add("读取到已保存的配置: " + cfg.summary());
     }
 
     private void loadDefaults() {
@@ -218,6 +253,92 @@ public final class SettingsActivity extends Activity {
         textColorBox.setText(BarConfig.DEF_TEXT_COLOR);
         barBgBox.setText(BarConfig.DEF_BAR_BG);
         buttonsBox.setText(BarConfig.DEFAULT_BUTTONS);
+    }
+
+    // ---------- 顶栏 ----------
+
+    /** 顶栏右边的「⋮」：三个点自己画，不用字符「⋮」——有的 ROM 缺这个字形，会渲染成方框 */
+    private final class DotsButton extends View {
+
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float dot = dp(4);
+        /** 相邻两点圆心的距离 */
+        private final float step = dp(7);
+
+        DotsButton(Context context) {
+            super(context);
+            paint.setColor(color(R.color.md_on_surface));
+            paint.setStyle(Paint.Style.FILL);
+            setContentDescription("更多");
+            setClickable(true);
+            // 圆形涟漪：掩膜只决定形状，颜色随便写
+            GradientDrawable mask = new GradientDrawable();
+            mask.setShape(GradientDrawable.OVAL);
+            mask.setColor(0xFFFFFFFF);
+            setBackground(new RippleDrawable(
+                    ColorStateList.valueOf(color(R.color.md_ripple_neutral)), null, mask));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float centerX = getWidth() / 2f;
+            float top = getHeight() / 2f - step;   // 三点整体垂直居中
+            for (int i = 0; i < 3; i++) {
+                canvas.drawCircle(centerX, top + step * i, dot / 2f, paint);
+            }
+        }
+    }
+
+    /**
+     * 「⋮」菜单：两行只读信息（版本 / 包名），点卡片外面收起。
+     * 用 PopupWindow 而不是自绘浮层——这里是正常的 Activity，不用输入法窗口那套兜底。
+     */
+    private void showInfoMenu(View anchor) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(roundRect(color(R.color.md_surface_bright), dp(12)));
+        card.setElevation(dp(3));
+        card.setPadding(0, dp(8), 0, dp(8));
+        card.addView(infoRow("版本 " + BuildConfig.VERSION_NAME));
+        card.addView(infoDivider());
+        card.addView(infoRow("包名 " + getPackageName()));
+
+        // 先量出内容本身有多宽，再夹在 [168dp, 屏宽-16dp] 之间
+        card.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int margin = dp(8);
+        int width = Math.min(Math.max(card.getMeasuredWidth(), dp(168)),
+                getResources().getDisplayMetrics().widthPixels - margin * 2);
+
+        PopupWindow popup = new PopupWindow(card, width, ViewGroup.LayoutParams.WRAP_CONTENT);
+        // 少了这层透明背景：点外面收不起来，卡片的阴影也会被窗口边界裁掉
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setOutsideTouchable(true);
+        popup.setFocusable(true);
+        // 让卡片右边缘对齐「⋮」；越界时 PopupWindow 会自己夹回屏幕内
+        popup.showAsDropDown(anchor, anchor.getWidth() - width, dp(4));
+    }
+
+    /** 一行只读信息 */
+    private TextView infoRow(String text) {
+        TextView row = new TextView(this);
+        row.setText(text);
+        row.setTextSize(14f);
+        row.setTextColor(color(R.color.md_on_surface));
+        row.setPadding(dp(16), dp(8), dp(16), dp(8));
+        return row;
+    }
+
+    /** 两行信息之间的细分隔线（和键盘上弹出的菜单卡片一个样子） */
+    private View infoDivider() {
+        View divider = new View(this);
+        divider.setBackgroundColor(color(R.color.md_outline_variant));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2));
+        int side = dp(12);
+        lp.setMargins(side, 0, side, 0);
+        divider.setLayoutParams(lp);
+        return divider;
     }
 
     // ---------- 组件 ----------

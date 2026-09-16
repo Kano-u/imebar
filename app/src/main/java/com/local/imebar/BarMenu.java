@@ -6,7 +6,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.inputmethodservice.InputMethodService;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -33,7 +32,6 @@ import java.util.List;
  */
 final class BarMenu {
 
-    private static final String TAG = "ImeBar";
     private static final int SCRIM_COLOR = 0x14000000;   // 很轻的一层压暗
     private static final int DIVIDER_COLOR = 0xFFC4C6D0; // outline variant
     private static final int TEXT_COLOR = 0xFF191C20;    // on surface：菜单文字固定深色
@@ -90,9 +88,8 @@ final class BarMenu {
         }
         try {
             show(decor, anchor, context, service, button);
-        } catch (Throwable t) {
-            Log.e(TAG, "弹出菜单失败", t);
-            dismiss();
+        } catch (Throwable ignored) {
+            dismiss();   // 弹不出来就收干净，别留一层浮在上面
         }
     }
 
@@ -136,7 +133,6 @@ final class BarMenu {
         session = current;
 
         showLevel();
-        RunLog.add("弹出菜单: " + button.label + "（" + items.size() + " 项）");
     }
 
     /**
@@ -194,7 +190,6 @@ final class BarMenu {
         }
 
         final InputMethodService service = current.service;
-        RunLog.add("菜单项点击: " + item.label + " → " + item.action);
         // 先收起菜单，再把动作丢到下一轮消息循环执行：
         // 触摸事件里直接 startActivity，个别 ROM 会当成"触摸过程中的动作"忽略掉；
         // 原版 AI超级工具栏 也是这么做的（view.post）。这里跟着来。

@@ -619,7 +619,7 @@ public final class SettingsActivity extends Activity {
                 + "enter 回车 / delete 退格 / left 光标左移 / right 光标右移 / hide 收起键盘\n"
                 + "text 插入固定文字（arg 写内容）\n"
                 + "app 打开某个 App（arg 写包名） / url 打开网址（arg 写链接）\n"
-                + "adb 执行 shell 命令（arg 写命令，需要 root）\n\n"
+                + "adb 执行 shell 命令（arg 写命令，走 Shizuku，首次会弹授权框）\n\n"
                 + "字段：label 显示文字（不写就用 action 顶上）、action 动作、arg 参数（可省）。\n"
                 + "菜单按钮：\"action\":\"menu\"，子项放 \"menu\":[{\"label\":\"剪切\",\"action\":\"cut\"}]。\n"
                 + "子项里还能再放 menu（多级嵌套，深度不限）；进子菜单后卡片最上面有「← 返回」。\n"

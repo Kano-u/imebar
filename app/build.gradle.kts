@@ -14,8 +14,8 @@ android {
         applicationId = "com.local.imebar"
         minSdk = 27
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.19.0"
+        versionCode = 24
+        versionName = "0.20.0"
     }
 
     signingConfigs {
@@ -50,6 +50,8 @@ android {
     // AGP 8 默认不再生成 BuildConfig，这里打开（日志里要用 BuildConfig.VERSION_NAME）
     buildFeatures {
         buildConfig = true
+        // Shizuku 的 UserService 靠 AIDL 通信，显式打开（AGP 8 虽然默认是 true，但写出来更清楚）
+        aidl = true
     }
 
     lint {
@@ -67,4 +69,10 @@ dependencies {
     // service 提供 XposedProvider（远程配置读取要用），interface 是它依赖的 AIDL 接口。
     compileOnly(files("libs/libxposed-api.jar"))
     implementation(files("libs/libxposed-service.jar", "libs/libxposed-interface.jar"))
+
+    // Shizuku：adb 动作唯一依赖的执行通道。
+    // api 提供 Shizuku 类（拿 binder / 申请权限 / 绑 UserService），provider 提供 ShizukuProvider
+    // （Shizuku 服务端只会把 binder 投递给清单里声明了它的包，且它自带 Sui 初始化）。
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }

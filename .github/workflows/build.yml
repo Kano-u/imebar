@@ -49,6 +49,9 @@ jobs:
           echo
           echo "== libxposed service 可用版本 =="
           curl -s https://repo1.maven.org/maven2/io/github/libxposed/service/maven-metadata.xml
+          echo
+          echo "== shizuku api 可用版本 =="
+          curl -s https://repo1.maven.org/maven2/dev/rikka/shizuku/api/maven-metadata.xml
 
       - name: 编译 Debug APK
         run: gradle --no-daemon --stacktrace assembleDebug

@@ -54,9 +54,33 @@ public final class ConfigProvider extends ContentProvider {
 
     private Bundle getConfig(Context context) {
         BarConfig config = BarConfig.fromPrefs(context.getSharedPreferences(BarConfig.GROUP, 0));
+        // 配置里确实有 adb/sh 按钮时，顺便在后台把 Shizuku 的 UserService 预热好，
+        // 这样第一次点那个按钮也是快的（没配 adb 按钮的设备完全不会碰 Shizuku）
+        if (hasShellButton(config.buttons())) {
+            AdbBridge.warmUpAsync();
+        }
         Bundle bundle = config.toBundle();
         bundle.putLong("timestamp", System.currentTimeMillis());
         return bundle;
+    }
+
+    /** 配置里有没有 adb / sh 动作的按钮（菜单子项也算） */
+    private static boolean hasShellButton(List<BarConfig.Button> buttons) {
+        if (buttons == null) {
+            return false;
+        }
+        for (BarConfig.Button button : buttons) {
+            if (button == null) {
+                continue;
+            }
+            if ("adb".equals(button.action) || "sh".equals(button.action)) {
+                return true;
+            }
+            if (hasShellButton(button.menuItems)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

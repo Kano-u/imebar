@@ -3,22 +3,23 @@ package com.local.imebar;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Base64;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 模块配置：一个不可变的值对象。
  *
- * 两个来源，产出的字段完全一样：
- *   1) fromPrefs()  —— 模块 App 自己的 SharedPreferences("config")；
- *   2) fromBundle() —— 设置页保存后，把数值本身推给输入法进程的广播。
+ * 来源：模块 App 自己的 SharedPreferences、设置页广播、以及输入法进程自己的快照。
+ * 三者产出的字段完全一样，进入输入法进程后都统一变成这个不可变值对象。
  *
- * 为什么非要 (2)：libxposed 的"远程偏好"是内存快照（只在创建时取一次），
- * 改了设置重读也拿不到新值；而广播里带的是**数值本身**，收到就能直接用。
+ * 为什么需要输入法侧快照：libxposed 的"远程偏好"是内存快照，模块 App 被系统冻结时
+ * 也可能拉不起来；首屏必须先有一份可用的整包配置，不能直接落回默认值。
  *
  * 位置固定键盘底部、按钮固定纯文字、排列固定均分铺满——都不做成可选项，
  * 所以这里没有这几项字段，也就没有对应的分支。
@@ -131,6 +132,47 @@ public final class BarConfig {
                 bundle.getString(KEY_TEXT_COLOR, DEF_TEXT_COLOR),
                 bundle.getString(KEY_BAR_BG, DEF_BAR_BG),
                 bundle.getString(KEY_BUTTONS, DEFAULT_BUTTONS));
+    }
+
+    /** 把完整配置序列化成字符串，供输入法进程自己的快照保存 */
+    public String toSnapshot() {
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put(KEY_ENABLED, enabled);
+            obj.put(KEY_EDGE_DISTANCE, edgeDistance);
+            obj.put(KEY_SIDE_MARGIN, sideMargin);
+            obj.put(KEY_TEXT_SIZE, textSize);
+            obj.put(KEY_OPACITY, opacity);
+            obj.put(KEY_TEXT_COLOR, textColorHex);
+            obj.put(KEY_BAR_BG, barBackgroundHex);
+            obj.put(KEY_BUTTONS, buttonsRaw);
+            return Base64.encodeToString(obj.toString().getBytes(StandardCharsets.UTF_8),
+                    Base64.NO_WRAP);
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    /** 从输入法进程自己的快照恢复；坏数据一律当作没有快照 */
+    public static BarConfig fromSnapshot(String raw) {
+        if (raw == null || raw.length() == 0) {
+            return null;
+        }
+        try {
+            JSONObject obj = new JSONObject(new String(
+                    Base64.decode(raw, Base64.NO_WRAP), StandardCharsets.UTF_8));
+            return new BarConfig(
+                    obj.optBoolean(KEY_ENABLED, true),
+                    obj.optInt(KEY_EDGE_DISTANCE, DEF_EDGE_DISTANCE),
+                    obj.optInt(KEY_SIDE_MARGIN, DEF_SIDE_MARGIN),
+                    obj.optInt(KEY_TEXT_SIZE, DEF_TEXT_SIZE),
+                    obj.optInt(KEY_OPACITY, DEF_OPACITY),
+                    obj.optString(KEY_TEXT_COLOR, DEF_TEXT_COLOR),
+                    obj.optString(KEY_BAR_BG, DEF_BAR_BG),
+                    obj.optString(KEY_BUTTONS, DEFAULT_BUTTONS));
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     public Bundle toBundle() {

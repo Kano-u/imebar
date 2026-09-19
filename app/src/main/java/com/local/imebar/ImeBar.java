@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.inputmethodservice.InputMethodService;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -30,11 +31,12 @@ import java.util.List;
  * 形态固定：贴在键盘最底部、纯文字按钮、等宽铺满（都不做可选项）。
  * 坐标系就是"输入法窗口"本身：底部距离 = 距键盘底边的高度，左右边距 = 距窗口两侧的距离。
  *
- * 配置有三条来源，按可靠性排序：
- *   1) **拉取**：每次弹出键盘，后台跨进程向模块 App 的 ConfigProvider 要一份当前配置
- *      （App 进程刚写过的偏好在它自己内存里一定是最新的）——这条最可靠；
- *   2) **推送**：设置页保存时把数值打包进广播发过来，收到立刻生效（不用等下次弹键盘）；
- *   3) **兜底**：libxposed 的远程偏好快照（它不会自己刷新，只在进程刚启动时读一次）。
+ * 配置有四条来源，按可靠性排序：
+ *   1) **本地快照**：每次成功拿到的完整配置写进输入法进程自己的 SharedPreferences，
+ *      冷启动或模块 App 被系统冻结时先读它，避免首屏闪回默认值；
+ *   2) **拉取**：弹出键盘时后台跨进程向模块 App 的 ConfigProvider 要一份当前配置；
+ *   3) **推送**：设置页保存时把数值打包进广播，收到立刻生效；
+ *   4) **兜底**：libxposed 的远程偏好快照（它不会自己刷新，只在进程刚启动时读一次）。
  */
 final class ImeBar {
 
@@ -42,6 +44,12 @@ final class ImeBar {
     private static final int BUTTON_GAP_DP = 8;
     /** 拉取配置的最小间隔，避免频繁跨进程调用 */
     private static final long PULL_INTERVAL_MS = 1500;
+    /** 首次拉取失败后的短重试：给模块进程一点启动时间，但不阻塞键盘首帧 */
+    private static final long PULL_RETRY_MS = 400;
+    private static final int PULL_RETRY_COUNT = 2;
+    /** 输入法进程自己的配置快照，不会被系统冻结模块 App 影响 */
+    private static final String SNAPSHOT_GROUP = "config_snapshot";
+    private static final String SNAPSHOT_KEY = "config";
 
     private static ConfigSource source;
     private static WeakReference<InputMethodService> lastService =
@@ -53,6 +61,8 @@ final class ImeBar {
     private static String lastSignature;
     private static boolean receiverRegistered;
     private static long lastPullAt;
+    /** 只让最新一轮拉取结果生效，避免旧请求覆盖新广播/新配置 */
+    private static int pullGeneration;
 
     private ImeBar() {
     }
@@ -71,13 +81,18 @@ final class ImeBar {
         registerConfigReceiver(service);
 
         BarConfig config = current;
+        boolean fromSnapshot = false;
         if (config == null) {
-            config = sourceGet();
-            current = config;
+            config = loadSnapshot(service);   // 优先用输入法进程自己的快照
+            fromSnapshot = config != null;
         }
+        if (config == null) {
+            config = sourceGet();   // 远程偏好只作兜底，拿不到时不能挡住设置页已有值
+        }
+        current = config;
         render(service, config);
 
-        pullFromApp(service);
+        pullFromApp(service, fromSnapshot);
     }
 
     // ---------- 配置来源 ----------
@@ -91,32 +106,73 @@ final class ImeBar {
         }
     }
 
+    /** 读输入法进程上次成功保存的快照；没有时返回 null，继续走其它来源 */
+    private static BarConfig loadSnapshot(Context context) {
+        try {
+            String raw = context.getSharedPreferences(SNAPSHOT_GROUP, 0)
+                    .getString(SNAPSHOT_KEY, null);
+            if (raw == null || raw.length() == 0) {
+                return null;
+            }
+            return BarConfig.fromSnapshot(raw);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 把完整配置存到输入法进程自己的快照，供下次冷启动首屏使用 */
+    private static void saveSnapshot(Context context, BarConfig config) {
+        if (config == null) {
+            return;
+        }
+        try {
+            context.getApplicationContext().getSharedPreferences(SNAPSHOT_GROUP, 0)
+                    .edit().putString(SNAPSHOT_KEY, config.toSnapshot()).apply();
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** 后台向模块 App 拉取最新配置（最可靠的一条路） */
-    private static void pullFromApp(final Context context) {
+    private static void pullFromApp(final Context context, boolean immediate) {
         long now = SystemClock.uptimeMillis();
-        if (now - lastPullAt < PULL_INTERVAL_MS) {
+        if (!immediate && now - lastPullAt < PULL_INTERVAL_MS) {
             return;
         }
         lastPullAt = now;
+        final int generation = ++pullGeneration;
         new Thread(new Runnable() {
             public void run() {
-                Bundle result = null;
-                try {
-                    result = context.getContentResolver().call(
-                            Uri.parse("content://" + ConfigProvider.AUTHORITY),
-                            ConfigProvider.METHOD_GET_CONFIG, null, null);
-                } catch (Throwable ignored) {
-                    // 模块 App 可能被强制停止，或跨进程调用被拦：静默，等下一次推送/兜底配置
-                }
-                if (result == null) {
-                    return;
-                }
-                final BarConfig config = BarConfig.fromBundle(result);
-                new Handler(Looper.getMainLooper()).post(new Runnable() {
-                    public void run() {
-                        applyConfig(config);
+                for (int attempt = 0; attempt <= PULL_RETRY_COUNT; attempt++) {
+                    Bundle result = null;
+                    try {
+                        result = context.getContentResolver().call(
+                                Uri.parse("content://" + ConfigProvider.AUTHORITY),
+                                ConfigProvider.METHOD_GET_CONFIG, null, null);
+                    } catch (Throwable ignored) {
+                        // 模块 App 可能被冻结或暂时拉不起来：短等后重试，失败就继续用快照
                     }
-                });
+                    if (result != null) {
+                        final BarConfig config = BarConfig.fromBundle(result);
+                        final Context appContext = context.getApplicationContext();
+                        new Handler(Looper.getMainLooper()).post(new Runnable() {
+                            public void run() {
+                                if (generation != pullGeneration) {
+                                    return;
+                                }
+                                saveSnapshot(appContext, config);
+                                applyConfig(config);
+                            }
+                        });
+                        return;
+                    }
+                    if (attempt < PULL_RETRY_COUNT) {
+                        try {
+                            Thread.sleep(PULL_RETRY_MS * (attempt + 1));
+                        } catch (InterruptedException ignored) {
+                            return;
+                        }
+                    }
+                }
             }
         }, "imebar-config-pull").start();
     }
@@ -136,7 +192,14 @@ final class ImeBar {
                     if (intent == null || !BarConfig.ACTION_CONFIG_CHANGED.equals(intent.getAction())) {
                         return;
                     }
-                    applyConfig(BarConfig.fromBundle(intent.getExtras()));
+                    Bundle extras = intent.getExtras();
+                    if (extras == null) {
+                        return;   // 空广播不能把已有快照覆盖成默认值
+                    }
+                    BarConfig config = BarConfig.fromBundle(extras);
+                    pullGeneration++;   // 已在途的旧拉取结果不得再覆盖这份推送
+                    saveSnapshot(ctx, config);
+                    applyConfig(config);
                 }
             };
             IntentFilter filter = new IntentFilter(BarConfig.ACTION_CONFIG_CHANGED);
